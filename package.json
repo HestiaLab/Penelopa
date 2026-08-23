@@ -6,7 +6,7 @@
     "build:js": "tsc -p src/Penelopa",
     "check:js": "tsc -p src/Penelopa --noEmit"
   },
-  "repository": "https://github.com/wubing7755/Penelopa.git",
+  "repository": "https://github.com/HestiaLab/Penelopa.git",
   "private": "true",
   "devDependencies": {
     "typescript": "^5.9.3"

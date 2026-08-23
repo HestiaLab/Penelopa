@@ -6,7 +6,7 @@ English | [简体中文](README.zh.md)
 
 Penelopa hosts a SkiaSharp drawing canvas, a primitive tree, alignment actions, and a property editor inside a six-region dockable workspace, and provides six-direction alignment (left / horizontal-center / right / top / vertical-center / bottom) for circle, rectangle, and triangle primitives.
 
-> **Live demo:** https://wubing7755.github.io/Penelopa/
+> **Live demo:** https://HestiaLab.github.io/Penelopa/
 
 ## Preview
 

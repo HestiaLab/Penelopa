@@ -6,7 +6,7 @@
 
 Penelopa 在六区域可停靠工作区中承载 SkiaSharp 绘制画布、图元树、对齐操作和属性编辑器，并为圆形、矩形、三角形图元提供六方向对齐（左 / 水平居中 / 右 / 上 / 垂直居中 / 下）。
 
-> **在线演示：** https://wubing7755.github.io/Penelopa/
+> **在线演示：** https://HestiaLab.github.io/Penelopa/
 
 ## 界面预览
 
