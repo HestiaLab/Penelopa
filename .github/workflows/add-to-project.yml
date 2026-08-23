@@ -1,0 +1,24 @@
+name: Add to project board
+
+on:
+  issues:
+    types:
+      - opened
+      - reopened
+      - transferred
+      - labeled
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - labeled
+
+jobs:
+  add-to-project:
+    name: Add issue or PR to HestiaLab board
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v2.0.0
+        with:
+          project-url: https://github.com/orgs/HestiaLab/projects/2
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
