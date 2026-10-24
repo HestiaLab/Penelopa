@@ -6,16 +6,15 @@ on:
       - opened
       - reopened
       - transferred
-      - labeled
   pull_request:
     types:
       - opened
       - reopened
-      - labeled
 
 jobs:
   add-to-project:
     name: Add issue or PR to HestiaLab board
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/add-to-project@v2.0.0
