@@ -32,10 +32,16 @@ public interface IEditorInteractionHost
     void PanByCss(float deltaX, float deltaY);
 
     /// <summary>
-    /// 通知宿主即将开始修改手势（拖拽/缩放），以便在首次几何变更前捕获撤销快照。每个手势仅触发一次。
+    /// 通知宿主即将开始修改手势（拖拽/缩放），以便在首次几何变更前打开事务快照。每个手势仅触发一次。
     /// </summary>
     void BeginMutation();
 
-    /// <summary>通知面板指定图元的几何已变更（拖拽/缩放提交时触发）。</summary>
+    /// <summary>提交修改手势，生成一个撤销条目。</summary>
+    void CommitMutation();
+
+    /// <summary>取消修改手势，恢复到手势前状态。</summary>
+    void CancelMutation();
+
+    /// <summary>通知面板指定图元的几何已变更（拖拽/缩放提交或取消时触发）。</summary>
     void NotifyPrimitivesChanged(IReadOnlyList<Primitive> primitives);
 }

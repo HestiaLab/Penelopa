@@ -21,13 +21,17 @@
     <ProjectReference Include="..\Penelopa.Rendering\Penelopa.Rendering.csproj" />
   </ItemGroup>
 
-  <!-- Compile the TypeScript pointer layer before every build. The committed
-       ts/penelopa.ts is the source of truth; the generated
-       wwwroot/js/penelopa.js is committed so builds without node still work
-       (CI restores it via npm ci + npm run build:js). -->
-  <Target Name="BuildTypeScript" BeforeTargets="Build">
-    <Exec Command="npm run build:js" WorkingDirectory="$(MSBuildThisFileDirectory)..\.."
-          Condition="Exists('$(MSBuildThisFileDirectory)..\..\package.json')"
+  <!-- Compile the TypeScript pointer layer when the local npm toolchain is
+       installed. ts/penelopa.ts is the source of truth and the generated
+       wwwroot/js/penelopa.js is committed, so a clean checkout without Node
+       builds and runs from the committed JS. CI runs npm ci first, which makes
+       this target compile and the drift check fail if the committed JS is stale. -->
+  <PropertyGroup>
+    <TypeScriptCompilerPath>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../node_modules/typescript/bin/tsc'))</TypeScriptCompilerPath>
+  </PropertyGroup>
+  <Target Name="BuildTypeScript" BeforeTargets="Build"
+          Condition="Exists('$(TypeScriptCompilerPath)') and Exists('$(MSBuildThisFileDirectory)../../package.json')">
+    <Exec Command="npm run build:js" WorkingDirectory="$(MSBuildThisFileDirectory)../.."
           StandardOutputImportance="normal" />
   </Target>
 

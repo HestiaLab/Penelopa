@@ -22,7 +22,10 @@ jobs:
         with:
           node-version: '20'
       - run: npm ci
-      - run: dotnet restore Penelopa.sln
+      - run: npm run check:js
+      - run: npm run test:js
+      - run: git diff --exit-code -- src/Penelopa/wwwroot/js/penelopa.js
+      - run: dotnet restore Penelopa.sln --locked-mode
       - run: dotnet build Penelopa.sln --no-restore
       - run: dotnet test Penelopa.sln --no-build --no-restore
 
@@ -38,5 +41,79 @@ jobs:
         with:
           node-version: '20'
       - run: npm ci
-      - run: dotnet restore Penelopa.sln
+      - run: dotnet restore Penelopa.sln --locked-mode
       - run: dotnet format Penelopa.sln --verify-no-changes --no-restore
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+      - run: dotnet workload install wasm-tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: dotnet restore Penelopa.sln --locked-mode
+      - run: dotnet build Penelopa.sln --no-restore
+      - run: dotnet test Penelopa.sln --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory artifacts/coverage
+      - run: python3 scripts/check-coverage.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: artifacts/coverage
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+      - run: dotnet workload install wasm-tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: dotnet restore Penelopa.sln --locked-mode
+      - run: dotnet build Penelopa.sln --no-restore
+      - run: npm ci
+        working-directory: tests/e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e
+      - run: npx playwright test
+        working-directory: tests/e2e
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+      - run: dotnet workload install wasm-tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm ci
+        working-directory: tests/e2e
+      - run: npm audit --audit-level=high
+        working-directory: tests/e2e
+      - run: dotnet restore Penelopa.sln --locked-mode
+      - name: Audit NuGet dependencies
+        run: |
+          output="$(dotnet list Penelopa.sln package --vulnerable --include-transitive)"
+          printf '%s\n' "$output"
+          # Fail on high/critical findings. A moderate AngleSharp mXSS advisory
+          # remains in bUnit's test-only DOM parser: AngleSharp 1.5 fixes it but
+          # is API-incompatible with bUnit 1.28/1.40, both of which require an
+          # older line. Revisit with the .NET/bUnit migration (S-01).
+          if grep -Eq "Critical|High" <<<"$output"; then
+            echo "High or critical NuGet vulnerabilities found." >&2
+            exit 1
+          fi

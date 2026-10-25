@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa.Rendering", "src\P
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa.Rendering.Tests", "tests\Penelopa.Rendering.Tests\Penelopa.Rendering.Tests.csproj", "{AE35F72F-CF27-4F04-98D4-3E95E1E57630}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa.Ui.Tests", "tests\Penelopa.Ui.Tests\Penelopa.Ui.Tests.csproj", "{1D9F6242-6246-4063-8BF0-1BD89963137C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,18 @@ Global
 		{AE35F72F-CF27-4F04-98D4-3E95E1E57630}.Release|x64.Build.0 = Release|Any CPU
 		{AE35F72F-CF27-4F04-98D4-3E95E1E57630}.Release|x86.ActiveCfg = Release|Any CPU
 		{AE35F72F-CF27-4F04-98D4-3E95E1E57630}.Release|x86.Build.0 = Release|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Debug|x64.Build.0 = Debug|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Debug|x86.Build.0 = Debug|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Release|x64.ActiveCfg = Release|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Release|x64.Build.0 = Release|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Release|x86.ActiveCfg = Release|Any CPU
+		{1D9F6242-6246-4063-8BF0-1BD89963137C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,5 +111,6 @@ Global
 		{DF3975DE-A2A4-4954-A99A-6ADB4404A59A} = {E19426E0-804F-44D0-97E1-F8FE8A0C1819}
 		{0F698F07-247D-46C6-ADF2-88A25508FC6F} = {24C70BF7-7AE4-405B-A785-0B5CF4E76CFD}
 		{AE35F72F-CF27-4F04-98D4-3E95E1E57630} = {E19426E0-804F-44D0-97E1-F8FE8A0C1819}
+		{1D9F6242-6246-4063-8BF0-1BD89963137C} = {E19426E0-804F-44D0-97E1-F8FE8A0C1819}
 	EndGlobalSection
 EndGlobal

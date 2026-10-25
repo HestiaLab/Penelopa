@@ -3,18 +3,19 @@
 @using Microsoft.AspNetCore.Components.Rendering
 @using Penelopa.Core.Primitives
 @using Penelopa.Core.Services
+@using DocumentState = Penelopa.Core.Services.DocumentState
 @inherits AtlasContentComponent
 @implements IDisposable
 
 <div class="penelopa-tree">
-    @if (_primitives.Count == 0)
+    @if (_state.Roots.Count == 0)
     {
         <p class="penelopa-tree-empty">No primitives yet. Add one from the Tools panel.</p>
     }
     else
     {
         <ul class="penelopa-tree-list">
-            @foreach (var primitive in _primitives)
+            @foreach (var primitive in _state.Roots)
             {
                 @RenderNode(primitive, 0)
             }
@@ -23,7 +24,7 @@
 </div>
 
 @code {
-    private readonly List<Primitive> _primitives = new();
+    private DocumentState _state = DocumentState.Empty;
 
     [Inject]
     private IPrimitiveService PrimitiveService { get; set; } = null!;
@@ -31,37 +32,18 @@
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        PrimitiveService.OnChange += HandleChange;
-        PrimitiveService.OnCollectionChanged += HandleCollectionChanged;
-        PrimitiveService.OnSelectionChanged += HandleSelectionChanged;
-        RefreshList();
+        _state = PrimitiveService.GetState();
+        PrimitiveService.Changed += HandleDocumentChanged;
     }
 
-    private void HandleChange(Primitive primitive)
+    private void HandleDocumentChanged(DocumentChange change)
     {
-        RefreshList();
+        _state = change.State;
         StateHasChanged();
-    }
-
-    private void HandleCollectionChanged()
-    {
-        RefreshList();
-        StateHasChanged();
-    }
-
-    private void HandleSelectionChanged(IEnumerable<Primitive> primitives)
-    {
-        StateHasChanged();
-    }
-
-    private void RefreshList()
-    {
-        _primitives.Clear();
-        _primitives.AddRange(PrimitiveService.GetAll());
     }
 
     private bool IsSelected(Primitive primitive)
-        => PrimitiveService.GetSelection().Contains(primitive);
+        => _state.Selection.Contains(primitive);
 
     private void Select(Primitive primitive)
     {
@@ -73,6 +55,7 @@
         <li>
             <button type="button"
                     class="penelopa-tree-item @(IsSelected(node) ? "selected" : "")"
+                    aria-pressed="@(IsSelected(node) ? "true" : "false")"
                     style="padding-left: @(12 + depth * 16)px"
                     @onclick="() => Select(node)">
                 @node.Name.Value
@@ -91,8 +74,6 @@
 
     public void Dispose()
     {
-        PrimitiveService.OnChange -= HandleChange;
-        PrimitiveService.OnCollectionChanged -= HandleCollectionChanged;
-        PrimitiveService.OnSelectionChanged -= HandleSelectionChanged;
+        PrimitiveService.Changed -= HandleDocumentChanged;
     }
 }

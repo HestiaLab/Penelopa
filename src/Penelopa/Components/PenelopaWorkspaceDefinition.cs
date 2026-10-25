@@ -20,7 +20,7 @@ public static class PenelopaContentKinds
 }
 
 /// <summary>
-/// 构建 Penelopa 工作区：Atlas 六区域可停靠布局，两侧对称 300px 侧栏围绕全高文档画布，
+/// 构建 Penelopa 工作区：Atlas 六区域可停靠布局，比例分割的响应式侧栏围绕全高文档画布，
 /// 外加四个空折叠组保持工具栏槽位可用。布局复刻原声明式 razor 树；两种形式产出相同的
 /// <see cref="AtlasWorkspaceDefinition"/>。
 /// </summary>
@@ -67,8 +67,8 @@ internal static class PenelopaWorkspaceDefinition
             LogicalRegion.BlockEndInlineEnd,
             GroupVisibility.Collapsed);
 
-        // 左/右停靠栏对称 300px；每个停靠栏的内部分割和底部停靠栏默认为 0.5 比例基数，
-        // 与声明式形式未指定 Basis 时的行为一致
+        // 侧栏不固定 300px：使用比例基准 + 最小/最大约束。Atlas 0.3.0 的约束
+        // 只作用于 splitter 交互；初始比例轨道不会被钳位，窄屏下可能小于 160px。
         var leftDock = Split(
             "left-dock",
             SplitAxis.BlockChildren,
@@ -84,15 +84,17 @@ internal static class PenelopaWorkspaceDefinition
         var editorRight = Split(
             "editor-right",
             SplitAxis.InlineChildren,
-            SplitBasis.FixedPixels(300d, SplitAnchor.Second),
+            SplitBasis.Proportional(0.7d),
             docsGroup.Id,
-            rightDock.Id);
+            rightDock.Id,
+            new SplitConstraints(240d, null, 160d, 300d));
         var mainArea = Split(
             "main-area",
             SplitAxis.InlineChildren,
-            SplitBasis.FixedPixels(300d, SplitAnchor.First),
+            SplitBasis.Proportional(0.22d),
             leftDock.Id,
-            editorRight.Id);
+            editorRight.Id,
+            new SplitConstraints(160d, 300d, 360d, null));
         var bottomDock = Split(
             "bottom-dock",
             SplitAxis.InlineChildren,
@@ -192,13 +194,14 @@ internal static class PenelopaWorkspaceDefinition
         SplitAxis axis,
         SplitBasis basis,
         LayoutNodeId firstId,
-        LayoutNodeId secondId)
+        LayoutNodeId secondId,
+        SplitConstraints constraints = default)
     {
         return new SplitNode(
             new LayoutNodeId(id),
             axis,
             basis,
-            default,
+            constraints,
             firstId,
             secondId);
     }

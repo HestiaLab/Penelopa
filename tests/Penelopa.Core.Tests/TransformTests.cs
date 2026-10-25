@@ -76,4 +76,16 @@ public class TransformTests
         Assert.True(Transform.Scale(2f, 3f).IsAxisAligned);
         Assert.False(Transform.Rotate(45f).IsAxisAligned);
     }
+
+    [Fact]
+    public void IsIdentity_DetectsIdentityWithinTolerance()
+    {
+        Assert.True(Transform.Identity.IsIdentity);
+        Assert.True(Transform.Translate(0f, 0f).IsIdentity);
+        Assert.True(Transform.Rotate(360f).IsIdentity);
+        Assert.False(Transform.Translate(1f, 0f).IsIdentity);
+        Assert.False(Transform.Rotate(45f).IsIdentity);
+        Assert.False(Transform.Scale(2f, 1f).IsIdentity);
+        Assert.False(Transform.Scale(-1f, 1f).IsIdentity);
+    }
 }

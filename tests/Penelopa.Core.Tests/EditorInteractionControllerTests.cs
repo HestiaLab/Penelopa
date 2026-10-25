@@ -1,6 +1,7 @@
 using Penelopa.Core.Alignment;
 using Penelopa.Core.Interaction;
 using Penelopa.Core.Primitives;
+using Penelopa.Core.Services;
 using Xunit;
 
 namespace Penelopa.Core.Tests;
@@ -134,10 +135,12 @@ public class EditorInteractionControllerTests
     [Fact]
     public void Cancel_AfterDrag_RestoresOriginalPosition()
     {
-        var host = new TestHost();
-        var controller = new EditorInteractionController(host);
+        var service = new PrimitiveService();
         var rect = Rect(0f, 0f);
-        host.Select(rect);
+        service.Add(rect);
+        service.SetSelected(rect);
+        var host = new ServiceInteractionHost(service);
+        var controller = new EditorInteractionController(host);
 
         controller.PointerDown(new Point(5f, 5f), new Point(5f, 5f), new HitTestResult { Primitive = rect }, ctrl: false);
         controller.PointerMove(new Point(30f, 5f), new Point(30f, 5f));
@@ -146,16 +149,19 @@ public class EditorInteractionControllerTests
 
         Assert.Equal(0f, rect.PosX.Value);
         Assert.Equal(ControllerState.Idle, controller.State);
-        Assert.Empty(host.Notified);
+        Assert.Equal(1, host.MutationCancels);
+        Assert.Contains(rect, host.Notified);
     }
 
     [Fact]
     public void Cancel_AfterResize_RestoresOriginalBounds()
     {
-        var host = new TestHost();
-        var controller = new EditorInteractionController(host);
+        var service = new PrimitiveService();
         var rect = Rect(0f, 0f);
-        host.Select(rect);
+        service.Add(rect);
+        service.SetSelected(rect);
+        var host = new ServiceInteractionHost(service);
+        var controller = new EditorInteractionController(host);
 
         controller.PointerDown(
             new Point(10f, 0f),
@@ -167,6 +173,7 @@ public class EditorInteractionControllerTests
 
         Assert.Equal(10f, rect.Width.Value);
         Assert.Equal(10f, rect.Height.Value);
+        Assert.Equal(1, host.MutationCancels);
     }
 
     [Fact]
@@ -428,6 +435,14 @@ public class EditorInteractionControllerTests
         public void BeginMutation()
         {
             MutationStarts++;
+        }
+
+        public void CommitMutation()
+        {
+        }
+
+        public void CancelMutation()
+        {
         }
 
         public void NotifyPrimitivesChanged(IReadOnlyList<Primitive> primitives)

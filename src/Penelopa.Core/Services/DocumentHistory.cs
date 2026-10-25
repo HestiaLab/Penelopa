@@ -6,13 +6,17 @@ namespace Penelopa.Core.Services;
 /// 文档撤销/重做历史。快照按引用捕获图元树及每个图元的属性值和容器子元素；
 /// 应用快照时恢复这些值并通过 <see cref="IPrimitiveService.ReplaceAll"/> 重建根列表。
 /// 选区是 UI 状态而非文档状态：不被捕获，撤销/重做保留恢复后仍存活的选区。
-/// 快照仅在真实修改前捕获（结构变更或拖拽/缩放手势开始），非修改性点击不产生撤销条目。
+/// 所有修改通过事务边界管理：<see cref="BeginTransaction"/> 在首次修改前拍快照，
+/// <see cref="CommitTransaction"/> 生成一个撤销条目，<see cref="CancelTransaction"/> 精确回滚到事务前状态。
+/// 手势取消与撤销共用同一套快照恢复逻辑。
 /// </summary>
 public sealed class DocumentHistory
 {
     private readonly IPrimitiveService _service;
     private readonly Stack<DocumentSnapshot> _undoStack = new();
     private readonly Stack<DocumentSnapshot> _redoStack = new();
+    private DocumentSnapshot? _pending;
+    private int _depth;
 
     public DocumentHistory(IPrimitiveService service)
     {
@@ -25,17 +29,90 @@ public sealed class DocumentHistory
     /// <summary>是否可重做。</summary>
     public bool CanRedo => _redoStack.Count > 0;
 
-    /// <summary>捕获当前文档状态以供撤销。在修改前调用。</summary>
+    /// <summary>是否有打开的事务。</summary>
+    public bool IsTransactionOpen => _depth > 0;
+
+    /// <summary>捕获当前文档状态并立即生成撤销条目（兼容旧的“修改前捕获”用法）。</summary>
     public void Capture()
     {
+        if (_depth > 0)
+        {
+            // 外层事务已经保存了修改前状态，无需重复捕获。
+            return;
+        }
+
         _undoStack.Push(DocumentSnapshot.Capture(_service.GetAll().ToList()));
         _redoStack.Clear();
     }
 
-    /// <summary>撤销最近的捕获。</summary>
+    /// <summary>开始事务；首次调用时捕获修改前快照，嵌套调用共享同一快照。</summary>
+    /// <remarks>快照捕获失败时不改变事务深度，避免后续提交/取消作用在损坏的状态上。</remarks>
+    public void BeginTransaction()
+    {
+        if (_depth > 0)
+        {
+            _depth++;
+            return;
+        }
+
+        _pending = DocumentSnapshot.Capture(_service.GetAll().ToList());
+        _depth = 1;
+    }
+
+    /// <summary>提交事务，生成一个撤销条目；嵌套调用在最后一层提交。</summary>
+    public void CommitTransaction()
+    {
+        if (_depth == 0)
+        {
+            return;
+        }
+
+        if (--_depth > 0)
+        {
+            return;
+        }
+
+        var pending = _pending;
+        _pending = null;
+        if (pending is null)
+        {
+            return;
+        }
+
+        _undoStack.Push(pending);
+        _redoStack.Clear();
+    }
+
+    /// <summary>取消事务并恢复到事务前状态（手势取消路径）。</summary>
+    public void CancelTransaction()
+    {
+        if (_depth == 0)
+        {
+            return;
+        }
+
+        var pending = _pending;
+        _depth = 0;
+        _pending = null;
+        pending?.Apply(_service);
+    }
+
+    /// <summary>丢弃事务快照但不恢复（未产生实际修改时使用）。</summary>
+    public void DiscardTransaction()
+    {
+        if (_depth == 0)
+        {
+            return;
+        }
+
+        _depth = 0;
+        _pending = null;
+    }
+
+    /// <summary>撤销最近的事务/捕获。</summary>
     public void Undo()
     {
-        if (_undoStack.Count == 0)
+        if (_depth > 0 || _undoStack.Count == 0)
         {
             return;
         }
@@ -49,7 +126,7 @@ public sealed class DocumentHistory
     /// <summary>重做最近撤销的捕获。</summary>
     public void Redo()
     {
-        if (_redoStack.Count == 0)
+        if (_depth > 0 || _redoStack.Count == 0)
         {
             return;
         }
@@ -136,6 +213,39 @@ public sealed class DocumentSnapshot
             CollectSnapshotNodes(root, snapshotNodes, snapshotSet);
         }
 
+        // 记录快照中的父子关系，用于把节点从当前（可能已被替换掉的）父级上摘下。
+        var snapshotParents = new Dictionary<Primitive, Container?>();
+        foreach (var root in _roots)
+        {
+            snapshotParents[root] = null;
+        }
+
+        foreach (var (containerId, savedChildren) in _children)
+        {
+            var container = snapshotNodes.FirstOrDefault(p => p is Container c && c.Id == containerId) as Container;
+            if (container is null)
+            {
+                continue;
+            }
+
+            foreach (var child in savedChildren)
+            {
+                snapshotParents[child] = container;
+            }
+        }
+
+        // 分组会创建不在目标快照中的新容器；撤销/重做时必须先解除其子项的旧父指针，
+        // 否则 ReplaceAll 会把子项装回根列表，但 Parent 仍指向旧容器。
+        foreach (var primitive in snapshotNodes)
+        {
+            if (primitive.Parent is Container currentParent
+                && (!snapshotParents.TryGetValue(primitive, out var targetParent)
+                    || !ReferenceEquals(currentParent, targetParent)))
+            {
+                currentParent.RemoveChild(primitive);
+            }
+        }
+
         // 恢复容器子元素（结构可能已变更）
         foreach (var (containerId, savedChildren) in _children)
         {
@@ -152,6 +262,9 @@ public sealed class DocumentSnapshot
 
             foreach (var child in savedChildren)
             {
+                // 恢复期间容器可能尚未挂回文档（例如重做分组）；先清除子项归属，
+                // 由后面的 ReplaceAll 从根节点统一重建文档归属。
+                child.SetOwnerRecursive(null);
                 container.AddChild(child);
             }
         }
