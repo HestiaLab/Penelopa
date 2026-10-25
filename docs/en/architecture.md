@@ -3,7 +3,7 @@
 ## Overview
 
 Penelopa is a Blazor WebAssembly primitive alignment editor that consumes the
-Atlas.Blazor 0.2.0 NuGet package for its dockable workspace shell. The editor
+Atlas.Blazor 0.3.0 NuGet package for its dockable workspace shell. The editor
 logic is layered so each concern is independently testable.
 
 ## Layers

@@ -157,7 +157,7 @@ internal static class PenelopaWorkspaceDefinition
 
     private static GroupNode ToolGroup(
         string id,
-        LogicalRegion logicalRegion,
+        LogicalRegion toolbarRegion,
         GroupVisibility visibility,
         params DockItemId[] itemIds)
     {
@@ -169,7 +169,7 @@ internal static class PenelopaWorkspaceDefinition
             visibility,
             itemIds,
             itemIds.Length == 0 ? null : itemIds[0],
-            logicalRegion: logicalRegion);
+            toolbarRegion: toolbarRegion);
     }
 
     private static GroupNode DocumentGroup(string id, params DockItemId[] itemIds)
