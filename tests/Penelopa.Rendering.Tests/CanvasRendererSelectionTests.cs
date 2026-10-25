@@ -1,3 +1,4 @@
+using Penelopa.Core.Alignment;
 using Penelopa.Core.Interaction;
 using Penelopa.Core.Primitives;
 using Penelopa.Rendering;
@@ -87,6 +88,110 @@ public class CanvasRendererSelectionTests
 
         Assert.Null(hit.Primitive);
         Assert.True(hit.InUnionBox);
+    }
+
+    public enum TinyShape
+    {
+        Circle,
+        Rectangle,
+        SmallRectangle,
+    }
+
+    [Theory]
+    [InlineData(TinyShape.Circle)]
+    [InlineData(TinyShape.Rectangle)]
+    [InlineData(TinyShape.SmallRectangle)]
+    public void HitTestSelection_TinySelection_CenterHitsBodyNotHandle(TinyShape shape)
+    {
+        Primitive primitive = shape switch
+        {
+            TinyShape.Circle => new Circle { CenterX = { Value = 10f }, CenterY = { Value = 10f }, Radius = { Value = 5f } },
+            TinyShape.Rectangle => new Rectangle { PosX = { Value = 10f }, PosY = { Value = 10f }, Width = { Value = 10f }, Height = { Value = 10f } },
+            TinyShape.SmallRectangle => new Rectangle { PosX = { Value = 10f }, PosY = { Value = 10f }, Width = { Value = 5f }, Height = { Value = 5f } },
+            _ => throw new ArgumentOutOfRangeException(nameof(shape)),
+        };
+        var renderer = new CanvasRenderer();
+        var selection = new[] { primitive };
+        renderer.Render(NewSurface(), NewInfo(), 1f, selection, selection);
+        var bounds = primitive.GetWorldBoundingBox();
+        var center = renderer.CurrentViewTransform.WorldToView(bounds.CenterX, bounds.CenterY);
+        var screen = renderer.CurrentViewTransform.ViewToScreen(center.X, center.Y);
+
+        var hit = renderer.HitTestSelection(screen.X, screen.Y, selection);
+
+        Assert.Null(hit.Handle);
+        Assert.Same(primitive, hit.Primitive);
+    }
+
+    [Fact]
+    public void HitTestSelection_TinySelection_CornerStillResizes()
+    {
+        var renderer = new CanvasRenderer();
+        var rect = new Rectangle { PosX = { Value = 10f }, PosY = { Value = 10f }, Width = { Value = 10f }, Height = { Value = 10f } };
+        var selection = new[] { rect };
+        renderer.Render(NewSurface(), NewInfo(), 1f, selection, selection);
+
+        // Bottom-right corner world (20, 10) → CSS (276, 246).
+        var hit = renderer.HitTestSelection(Center + 20f, Center - 10f, selection);
+
+        Assert.Equal(ResizeHandle.BottomRight, hit.Handle);
+    }
+
+    [Fact]
+    public void HitTestSelection_TinyContainer_CenterAllowsDrillDown()
+    {
+        var renderer = new CanvasRenderer();
+        var container = Container.CreateOffset("c", 10f, 10f);
+        var child = new Rectangle { PosX = { Value = 0f }, PosY = { Value = 0f }, Width = { Value = 10f }, Height = { Value = 10f } };
+        container.AddChild(child);
+        var selection = new[] { container };
+        renderer.Render(NewSurface(), NewInfo(), 1f, new Primitive[] { container }, selection);
+
+        // 容器世界框 (10,10)-(20,20) 的中心
+        var hit = renderer.HitTestSelection(Center + 15f, Center - 15f, selection);
+
+        Assert.Null(hit.Handle);
+        Assert.Same(child, hit.Primitive);
+        Assert.NotNull(hit.Candidates);
+        Assert.Equal(new Primitive[] { container, child }, hit.Candidates);
+    }
+
+    [Fact]
+    public void HitTestSelection_TinySelectionAtZoomOut_CenterStillHitsBody()
+    {
+        var renderer = new CanvasRenderer();
+        var rect = new Rectangle { PosX = { Value = 10f }, PosY = { Value = 10f }, Width = { Value = 10f }, Height = { Value = 10f } };
+        var selection = new[] { rect };
+        renderer.SetViewTransform(new ViewTransform(CanvasSize, CanvasSize, 1f, zoom: 0.5f));
+        renderer.Render(NewSurface(), NewInfo(), 1f, selection, selection);
+
+        // 5 CSS px 的选择框中心
+        var worldCenter = rect.GetWorldBoundingBox().Center;
+        var view = renderer.CurrentViewTransform.WorldToView(worldCenter.X, worldCenter.Y);
+        var screen = renderer.CurrentViewTransform.ViewToScreen(view.X, view.Y);
+        var hit = renderer.HitTestSelection(screen.X, screen.Y, selection);
+
+        Assert.Null(hit.Handle);
+        Assert.Same(rect, hit.Primitive);
+    }
+
+    [Fact]
+    public void HitTestSelection_ChildOfRotatedContainer_DoesNotExposeResizeHandles()
+    {
+        var renderer = new CanvasRenderer();
+        var container = Container.CreateRotation("r", 45f);
+        var rect = new Rectangle { PosX = { Value = 10f }, PosY = { Value = 10f }, Width = { Value = 50f }, Height = { Value = 50f } };
+        container.AddChild(rect);
+        var selection = new[] { rect };
+        renderer.Render(NewSurface(), NewInfo(), 1f, new Primitive[] { container }, selection);
+
+        var bounds = rect.GetWorldBoundingBox();
+        var view = renderer.CurrentViewTransform.WorldToView(bounds.MaxX, bounds.MinY);
+        var screen = renderer.CurrentViewTransform.ViewToScreen(view.X, view.Y);
+        var hit = renderer.HitTestSelection(screen.X, screen.Y, selection);
+
+        Assert.Null(hit.Handle);
+        Assert.False(rect.CanResizeInWorld);
     }
 
     [Fact]

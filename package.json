@@ -4,7 +4,9 @@
   "description": "Penelopa front-end toolchain (TypeScript compilation)",
   "scripts": {
     "build:js": "tsc -p src/Penelopa",
-    "check:js": "tsc -p src/Penelopa --noEmit"
+    "check:js": "tsc -p src/Penelopa --noEmit",
+    "test:js": "npm run build:js && node --test tests/js/penelopa.test.mjs",
+    "test:e2e": "npm --prefix tests/e2e test"
   },
   "repository": "https://github.com/HestiaLab/Penelopa.git",
   "private": "true",

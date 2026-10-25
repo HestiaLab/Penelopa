@@ -91,4 +91,15 @@ public struct Transform
 
     /// <summary>变换是否轴对齐（无旋转/剪切），世界轴缩放不会引入剪切。</summary>
     public bool IsAxisAligned => MathF.Abs(B) < 1e-6f && MathF.Abs(C) < 1e-6f;
+
+    /// <summary>是否为单位变换（允许旋转 360° 等浮点误差）。</summary>
+    public bool IsIdentity
+        => MathF.Abs(A - 1f) < IdentityEpsilon
+            && MathF.Abs(B) < IdentityEpsilon
+            && MathF.Abs(C) < IdentityEpsilon
+            && MathF.Abs(D - 1f) < IdentityEpsilon
+            && MathF.Abs(Tx) < IdentityEpsilon
+            && MathF.Abs(Ty) < IdentityEpsilon;
+
+    private const float IdentityEpsilon = 1e-4f;
 }

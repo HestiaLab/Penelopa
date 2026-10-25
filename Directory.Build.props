@@ -9,5 +9,7 @@
     <AnalysisLevel>6.0</AnalysisLevel>
     <Version>0.0.0-dev</Version>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- 提交 packages.lock.json 固定传递依赖；CI 使用 locked mode 恢复。 -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 </Project>

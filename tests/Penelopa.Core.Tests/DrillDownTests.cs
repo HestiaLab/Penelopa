@@ -128,6 +128,14 @@ public class DrillDownTests
         {
         }
 
+        public void CommitMutation()
+        {
+        }
+
+        public void CancelMutation()
+        {
+        }
+
         public void NotifyPrimitivesChanged(IReadOnlyList<Primitive> primitives)
         {
         }

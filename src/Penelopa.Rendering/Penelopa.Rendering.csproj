@@ -10,6 +10,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Penelopa.Rendering.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Penelopa.Core\Penelopa.Core.csproj" />
   </ItemGroup>
 

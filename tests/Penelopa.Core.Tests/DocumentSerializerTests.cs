@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Penelopa.Core.Primitives;
 using Penelopa.Core.Services;
 using Xunit;
@@ -84,5 +86,187 @@ public class DocumentSerializerTests
         var json = "{\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"Rectangle\", \"Props\": {\"Width\": \"wide\"}}]}";
 
         Assert.Null(DocumentSerializer.Deserialize(json));
+    }
+
+    [Fact]
+    public void Serialize_IncludesCurrentVersion()
+    {
+        var json = DocumentSerializer.Serialize(new Primitive[] { new Rectangle() }, Array.Empty<Primitive>());
+
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(DocumentSerializer.CurrentVersion, document.RootElement.GetProperty("Version").GetInt32());
+    }
+
+    [Fact]
+    public void Deserialize_LegacyDocumentWithoutVersion_IsAccepted()
+    {
+        const string json = @"{
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        var result = DocumentSerializer.Deserialize(json);
+
+        Assert.NotNull(result);
+        Assert.IsType<Rectangle>(Assert.Single(result!.Roots));
+    }
+
+    [Theory]
+    [InlineData("99")]
+    [InlineData("-1")]
+    public void Deserialize_UnknownOrNegativeVersion_ReturnsNull(string version)
+    {
+        var json = $@"{{
+          ""Version"": {version},
+          ""Primitives"": [
+            {{ ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }}
+          ],
+          ""SelectionIds"": []
+        }}";
+
+        Assert.Null(DocumentSerializer.Deserialize(json));
+    }
+
+    [Fact]
+    public void Deserialize_DuplicateIds_ReturnsNull()
+    {
+        const string json = @"{
+          ""Version"": 1,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" },
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Circle"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        Assert.Null(DocumentSerializer.Deserialize(json));
+    }
+
+    [Fact]
+    public void Deserialize_EmptyId_ReturnsNull()
+    {
+        const string json = @"{
+          ""Version"": 1,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000000"", ""Type"": ""Rectangle"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        Assert.Null(DocumentSerializer.Deserialize(json));
+    }
+
+    [Fact]
+    public void Deserialize_ChildrenOnNonContainer_ReturnsNull()
+    {
+        const string json = @"{
+          ""Version"": 1,
+          ""Primitives"": [
+            {
+              ""Id"": ""00000000-0000-0000-0000-000000000001"",
+              ""Type"": ""Rectangle"",
+              ""Children"": [
+                { ""Id"": ""00000000-0000-0000-0000-000000000002"", ""Type"": ""Circle"" }
+              ]
+            }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        Assert.Null(DocumentSerializer.Deserialize(json));
+    }
+
+    [Fact]
+    public void Deserialize_TooDeep_ReturnsNull()
+    {
+        var root = Container.CreateOffset("root", 0f, 0f);
+        var current = root;
+        for (var i = 0; i < DocumentSerializer.MaxDepth + 2; i++)
+        {
+            var child = Container.CreateOffset($"c{i}", 0f, 0f);
+            current.AddChild(child);
+            current = child;
+        }
+
+        var json = DocumentSerializer.Serialize(new Primitive[] { root }, Array.Empty<Primitive>());
+
+        Assert.Null(DocumentSerializer.Deserialize(json));
+    }
+
+    [Fact]
+    public void Deserialize_TooManyNodes_ReturnsNull()
+    {
+        var builder = new StringBuilder("{\"Version\":1,\"Primitives\":[");
+        for (var i = 0; i <= DocumentSerializer.MaxNodes; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(',');
+            }
+
+            builder.Append("{\"Id\":\"").Append(Guid.NewGuid()).Append("\",\"Type\":\"Rectangle\"}");
+        }
+
+        builder.Append("],\"SelectionIds\":[]}");
+
+        Assert.Null(DocumentSerializer.Deserialize(builder.ToString()));
+    }
+
+    [Fact]
+    public void Deserialize_TooLarge_ReturnsNull()
+    {
+        var json = new string('x', DocumentSerializer.MaxDocumentBytes + 1);
+
+        Assert.Null(DocumentSerializer.Deserialize(json));
+    }
+
+    [Fact]
+    public void Deserialize_DuplicateSelectionIds_AreDeduplicated()
+    {
+        const string json = @"{
+          ""Version"": 1,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+          ],
+          ""SelectionIds"": [
+            ""00000000-0000-0000-0000-000000000001"",
+            ""00000000-0000-0000-0000-000000000001""
+          ]
+        }";
+
+        var result = DocumentSerializer.Deserialize(json);
+
+        Assert.NotNull(result);
+        Assert.Single(result!.SelectionIds);
+    }
+
+    [Fact]
+    public void ResolveSelection_MapsKnownIdsAndIgnoresUnknown()
+    {
+        const string json = @"{
+          ""Version"": 1,
+          ""Primitives"": [
+            {
+              ""Id"": ""00000000-0000-0000-0000-000000000001"",
+              ""Type"": ""Container"",
+              ""Kind"": ""Offset"",
+              ""Children"": [
+                { ""Id"": ""00000000-0000-0000-0000-000000000002"", ""Type"": ""Circle"" }
+              ]
+            }
+          ],
+          ""SelectionIds"": [
+            ""00000000-0000-0000-0000-000000000002"",
+            ""00000000-0000-0000-0000-000000000099""
+          ]
+        }";
+
+        var result = DocumentSerializer.Deserialize(json)!;
+        var selection = result.ResolveSelection();
+
+        var circle = Assert.IsType<Circle>(Assert.Single(selection));
+        Assert.Equal(Guid.Parse("00000000-0000-0000-0000-000000000002"), circle.Id);
     }
 }

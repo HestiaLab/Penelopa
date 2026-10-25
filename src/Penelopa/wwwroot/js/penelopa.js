@@ -13,7 +13,11 @@ window.penelopa.getDpr = function () {
 };
 window.penelopa.watchDpr = function (dotNetRef) {
     let mq = null;
+    let disposed = false;
     const onChange = () => {
+        if (disposed) {
+            return;
+        }
         // 为新比率重新挂载监听；每次分辨率变更触发一次，然后监听下一个比率。
         if (mq) {
             mq.removeEventListener('change', onChange);
@@ -24,6 +28,15 @@ window.penelopa.watchDpr = function (dotNetRef) {
         void dotNetRef.invokeMethodAsync('OnDevicePixelRatioChanged', dpr);
     };
     onChange();
+    return {
+        dispose() {
+            disposed = true;
+            if (mq) {
+                mq.removeEventListener('change', onChange);
+                mq = null;
+            }
+        },
+    };
 };
 // 将指针交互层挂载到画布元素。
 // 返回 { dispose } 句柄供清理使用。
@@ -36,15 +49,41 @@ window.penelopa.attachPointer = function (canvasEl, dotNetRef) {
         rafPending: false,
     };
     function refreshRect() {
-        state.rect = canvasEl.getBoundingClientRect();
+        // 内层 canvas 可能带 1px 边框；指针坐标必须相对内容原点，
+        // 与 SKGLView 的绘制尺寸/命中缓冲区保持一致。
+        const surface = canvasEl.querySelector('canvas');
+        if (surface) {
+            const rect = surface.getBoundingClientRect();
+            state.rect = {
+                left: rect.left + surface.clientLeft,
+                top: rect.top + surface.clientTop,
+            };
+        }
+        else {
+            const rect = canvasEl.getBoundingClientRect();
+            state.rect = { left: rect.left, top: rect.top };
+        }
+    }
+    // 布局/滚动变化后矩形失效，下一次坐标转换时重新读取。
+    function invalidateRect() {
+        state.rect = null;
+    }
+    function currentRect() {
+        let rect = state.rect;
+        if (!rect) {
+            refreshRect();
+            rect = state.rect;
+        }
+        return rect;
     }
     function toCss(e) {
-        // 画布相对 CSS 坐标；rect 是视口相对的且已包含滚动偏移，
+        // 画布内容相对 CSS 坐标；origin 是视口相对的且已包含滚动偏移，
         // 因此在滚动容器内结果正确，无需额外计算。
-        const rect = state.rect;
+        // 惰性刷新：首个事件可能是未按下的 Ctrl+滚轮，origin 尚未初始化。
+        const origin = currentRect();
         return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
+            x: e.clientX - origin.left,
+            y: e.clientY - origin.top,
         };
     }
     function onPointerDown(e) {
@@ -67,9 +106,15 @@ window.penelopa.attachPointer = function (canvasEl, dotNetRef) {
         state.activePointerId = e.pointerId;
         refreshRect();
         try {
-            canvasEl.setPointerCapture(e.pointerId);
+            canvasEl.focus({ preventScroll: true });
         }
         catch (_a) {
+            /* 旧浏览器可能不支持 focus 选项；焦点仍会落到可聚焦元素上 */
+        }
+        try {
+            canvasEl.setPointerCapture(e.pointerId);
+        }
+        catch (_b) {
             /* 捕获是尽力而为；move 事件仍会到达元素 */
         }
         canvasEl.classList.add('penelopa-dragging'); // touch-action: none
@@ -136,9 +181,49 @@ window.penelopa.attachPointer = function (canvasEl, dotNetRef) {
         }
     }
     function onKeyDown(e) {
+        // 文本编辑控件内的按键（包括 Ctrl+Z）交给控件自身处理，
+        // 否则会删除图元并劫持输入框的文本撤销。
+        const target = e.target;
+        if (target) {
+            const tag = target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+                return;
+            }
+        }
         if (e.key === 'Escape') {
             void dotNetRef.invokeMethodAsync('OnEscape');
             return;
+        }
+        if (e.key === 'Delete') {
+            e.preventDefault();
+            void dotNetRef.invokeMethodAsync('OnDelete');
+            return;
+        }
+        // 方向键只在可聚焦的画布容器本身获得焦点时移动选区，
+        // 避免劫持页面/工具栏（包括画布内 Fit 按钮）的键盘导航。
+        const canvasFocused = target === canvasEl;
+        if (canvasFocused) {
+            const step = e.shiftKey ? 10 : 1;
+            let nudge = null;
+            switch (e.key) {
+                case 'ArrowLeft':
+                    nudge = [-step, 0];
+                    break;
+                case 'ArrowRight':
+                    nudge = [step, 0];
+                    break;
+                case 'ArrowUp':
+                    nudge = [0, step];
+                    break;
+                case 'ArrowDown':
+                    nudge = [0, -step];
+                    break;
+            }
+            if (nudge) {
+                e.preventDefault();
+                void dotNetRef.invokeMethodAsync('OnNudge', nudge[0], nudge[1]);
+                return;
+            }
         }
         const mod = e.ctrlKey || e.metaKey;
         const key = e.key.toLowerCase();
@@ -152,33 +237,50 @@ window.penelopa.attachPointer = function (canvasEl, dotNetRef) {
             void dotNetRef.invokeMethodAsync('OnRedo');
         }
     }
+    function onPointerEnter() {
+        refreshRect();
+    }
     function onWheel(e) {
         // 仅 Ctrl+滚轮缩放（浏览器约定）；普通滚轮留给页面/容器滚动。
         if (!e.ctrlKey) {
             return;
         }
         e.preventDefault();
+        // 滚轮不经过 pointerdown，必须在这里刷新（首次事件时 rect 仍为 null）。
+        refreshRect();
         const pos = toCss(e);
         void dotNetRef.invokeMethodAsync('OnWheel', pos.x, pos.y, e.deltaY);
     }
+    // 面板尺寸（Atlas splitter）变化时 getBoundingClientRect 会变化，无需等待滚动事件。
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => invalidateRect());
+    resizeObserver === null || resizeObserver === void 0 ? void 0 : resizeObserver.observe(canvasEl);
     canvasEl.addEventListener('pointerdown', onPointerDown);
     canvasEl.addEventListener('pointermove', onPointerMove);
     canvasEl.addEventListener('pointerup', onPointerUp);
     canvasEl.addEventListener('pointercancel', onCancel);
     canvasEl.addEventListener('lostpointercapture', onLostPointerCapture);
+    canvasEl.addEventListener('pointerenter', onPointerEnter);
     canvasEl.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('resize', invalidateRect);
+    document.addEventListener('scroll', invalidateRect, true);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('keydown', onKeyDown);
     return {
         dispose() {
+            resizeObserver === null || resizeObserver === void 0 ? void 0 : resizeObserver.disconnect();
             canvasEl.removeEventListener('pointerdown', onPointerDown);
             canvasEl.removeEventListener('pointermove', onPointerMove);
             canvasEl.removeEventListener('pointerup', onPointerUp);
             canvasEl.removeEventListener('pointercancel', onCancel);
             canvasEl.removeEventListener('lostpointercapture', onLostPointerCapture);
+            canvasEl.removeEventListener('pointerenter', onPointerEnter);
             canvasEl.removeEventListener('wheel', onWheel);
             window.removeEventListener('blur', onWindowBlur);
+            window.removeEventListener('resize', invalidateRect);
+            document.removeEventListener('scroll', invalidateRect, true);
             document.removeEventListener('visibilitychange', onVisibilityChange);
             window.removeEventListener('keydown', onKeyDown);
             canvasEl.classList.remove('penelopa-dragging');

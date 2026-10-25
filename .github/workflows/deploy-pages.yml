@@ -31,22 +31,25 @@ jobs:
       - name: Install wasm-tools workload
         run: dotnet workload install wasm-tools
 
-      # Penelopa.csproj's BuildTypeScript target runs `npm run build:js`
-      # before every build, so node_modules must be restored first (the lock
-      # pins tsc 5.9.3; without npm ci the runner's global tsc 6.x rejects
-      # tsconfig's module:"none"/outFile options).
+      # Penelopa.csproj's BuildTypeScript target compiles the committed TS when
+      # the local npm toolchain is present. Restore it here so the deployed
+      # bundle is compiled from source with the lock-pinned tsc 5.9.3; a local
+      # build without node_modules falls back to the committed JS.
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - name: Restore front-end toolchain
         run: npm ci
 
+      - name: Restore .NET packages in locked mode
+        run: dotnet restore Penelopa.sln --locked-mode
+
       - name: Publish Penelopa
         run: |
           dotnet publish src/Penelopa/Penelopa.csproj \
             --configuration Release \
-            --output publish/site \
-            --source https://api.nuget.org/v3/index.json
+            --no-restore \
+            --output publish/site
 
       # GitHub Pages project site maps the deployed artifact root to the
       # /Penelopa/ subpath. The dev index.html keeps base href="/" so local

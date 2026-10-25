@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Penelopa.Core.Alignment;
 
 namespace Penelopa.Core.Primitives;
@@ -19,6 +20,7 @@ public enum ContainerKind
 public sealed class Container : Primitive
 {
     private readonly List<Primitive> _children = new();
+    private readonly ReadOnlyCollection<Primitive> _readOnlyChildren;
 
     public Container(
         string name,
@@ -30,6 +32,7 @@ public sealed class Container : Primitive
         float scaleY)
         : base(name)
     {
+        _readOnlyChildren = _children.AsReadOnly();
         Kind = kind;
         OffsetX = new FloatPropValue("Offset X", offsetX);
         OffsetY = new FloatPropValue("Offset Y", offsetY);
@@ -94,8 +97,8 @@ public sealed class Container : Primitive
 
     private const float MinScaleMagnitude = 0.01f;
 
-    /// <summary>子图元列表（按渲染顺序，首个在最底层）。</summary>
-    public IReadOnlyList<Primitive> Children => _children;
+    /// <summary>子图元的只读视图（按渲染顺序，首个在最底层）；结构变更必须经 <see cref="AddChild"/> / <see cref="RemoveChild"/>。</summary>
+    public IReadOnlyList<Primitive> Children => _readOnlyChildren;
 
     /// <summary>创建偏移容器。</summary>
     public static Container CreateOffset(string name, float offsetX, float offsetY)
@@ -110,6 +113,7 @@ public sealed class Container : Primitive
         => new(name, ContainerKind.Flip, 0f, 0f, 0f, flipX ? -1f : 1f, flipY ? -1f : 1f);
 
     /// <summary>添加子图元，将其重新关联到本容器的局部空间。</summary>
+    /// <remarks>子图元继承容器的文档归属；属于其他文档的图元会被拒绝。</remarks>
     public void AddChild(Primitive child)
     {
         if (child.Parent is not null)
@@ -117,8 +121,14 @@ public sealed class Container : Primitive
             throw new InvalidOperationException("A primitive can only have one parent.");
         }
 
+        if (child.Owner is not null && !ReferenceEquals(child.Owner, Owner))
+        {
+            throw new InvalidOperationException("Cannot attach a primitive from another document.");
+        }
+
         child.Parent = this;
         _children.Add(child);
+        child.SetOwnerRecursive(Owner);
     }
 
     /// <summary>移除子图元，将其脱离到根级别。</summary>
@@ -127,6 +137,7 @@ public sealed class Container : Primitive
         if (_children.Remove(child))
         {
             child.Parent = null;
+            child.SetOwnerRecursive(null);
         }
     }
 
@@ -134,9 +145,16 @@ public sealed class Container : Primitive
     public Box TransformBoundsToParent(Box local)
         => TransformBox(local, LocalTransform);
 
-    /// <summary>将包围盒从父空间变换到本容器空间。</summary>
+    /// <summary>将包围盒从本容器的父空间变换到本容器空间（只应用本层变换）。</summary>
     public Box ToLocalBounds(Box parent)
         => TransformBox(parent, LocalTransform.Invert());
+
+    /// <summary>将世界空间的包围盒转换到本容器空间（沿祖先链逐级求逆）。</summary>
+    public Box WorldToLocalBounds(Box world)
+    {
+        var box = Parent is Container parent ? parent.WorldToLocalBounds(world) : world;
+        return TransformBox(box, LocalTransform.Invert());
+    }
 
     /// <summary>将包围盒从本容器空间变换到世界空间。</summary>
     public Box ToWorldBounds(Box local)

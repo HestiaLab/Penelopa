@@ -5,6 +5,7 @@
 @using Penelopa.Core.Primitives
 @using Penelopa.Core.Services
 @inherits AtlasContentComponent
+@implements IDisposable
 
 <div class="penelopa-tools">
     <h3>Tools</h3>
@@ -35,6 +36,20 @@
             <button type="button" class="penelopa-tool-button" @onclick="LoadDocument">Load</button>
         </div>
         <p class="penelopa-tool-hint">Stores the document in this browser (localStorage).</p>
+        @if (_pendingLoad is not null)
+        {
+            <div class="penelopa-tool-confirm">
+                <p class="penelopa-tool-hint">Replace the current document with the saved one?</p>
+                <div class="penelopa-tool-actions">
+                    <button type="button" class="penelopa-tool-button" @onclick="ConfirmLoad">Replace</button>
+                    <button type="button" class="penelopa-tool-button" @onclick="CancelLoad">Cancel</button>
+                </div>
+            </div>
+        }
+        @if (_documentMessage is not null)
+        {
+            <p class="penelopa-tool-message @(_documentError ? "is-error" : string.Empty)">@_documentMessage</p>
+        }
     </div>
 
     <div class="penelopa-tool-section">
@@ -48,16 +63,114 @@
             <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Bottom)">&#8595; Bottom</button>
         </div>
     </div>
+
+    <div class="penelopa-tool-section">
+        <span class="penelopa-tool-label">Selection</span>
+        <div class="penelopa-tool-actions">
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-keyshortcuts="Delete"
+                    disabled="@(!_hasSelection)"
+                    @onclick="DeleteSelection">Delete</button>
+        </div>
+        <p class="penelopa-tool-hint">Deletes the selected primitives. Undo with Ctrl+Z.</p>
+    </div>
+
+    <div class="penelopa-tool-section">
+        <span class="penelopa-tool-label">Group</span>
+        <div class="penelopa-tool-actions">
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-describedby="penelopa-group-hint"
+                    disabled="@(!_canGroup)"
+                    @onclick="GroupSelection">Group</button>
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-describedby="penelopa-group-hint"
+                    disabled="@(!_canUngroup)"
+                    @onclick="UngroupSelection">Ungroup</button>
+        </div>
+        <p class="penelopa-tool-hint" id="penelopa-group-hint">
+            Group two or more root primitives. Ungroup a root container with an identity
+            transform (offset 0, rotation 0, scale 1).
+        </p>
+        @if (_groupMessage is not null)
+        {
+            <p class="penelopa-tool-message is-error">@_groupMessage</p>
+        }
+    </div>
 </div>
 
 @code {
     private const string StorageKey = "penelopa.document";
+    private const string BackupKey = "penelopa.document.backup";
+
+    private DeserializeResult? _pendingLoad;
+    private string? _documentMessage;
+    private bool _documentError;
+    private bool _hasSelection;
+    private bool _canGroup;
+    private bool _canUngroup;
+    private string? _groupMessage;
 
     [Inject]
     private IPrimitiveService PrimitiveService { get; set; } = null!;
 
     [Inject]
     private IJSRuntime JS { get; set; } = null!;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        UpdateSelectionState(PrimitiveService.GetSelection());
+        PrimitiveService.Changed += HandleDocumentChanged;
+    }
+
+    private void HandleDocumentChanged(DocumentChange change)
+    {
+        UpdateSelectionState(change.State.Selection);
+        _groupMessage = null;
+        StateHasChanged();
+    }
+
+    private void UpdateSelectionState(IReadOnlyList<Primitive> selection)
+    {
+        _hasSelection = selection.Count > 0;
+        _canGroup = selection.Count >= 2 && selection.All(primitive => primitive.Parent is null);
+        _canUngroup = selection.Count == 1
+            && selection[0] is Container container
+            && container.Parent is null
+            && container.LocalTransform.IsIdentity;
+    }
+
+    private void DeleteSelection()
+    {
+        PrimitiveService.RemoveRange(PrimitiveService.GetSelection());
+    }
+
+    private void GroupSelection()
+    {
+        _ = PrimitiveService.GroupSelection(out var error);
+        _groupMessage = error;
+    }
+
+    private void UngroupSelection()
+    {
+        var selection = PrimitiveService.GetSelection();
+        if (selection.Count != 1 || selection[0] is not Container container)
+        {
+            _groupMessage = "Select one root container to ungroup.";
+            return;
+        }
+
+        _ = PrimitiveService.TryUngroup(container, out var error);
+        _groupMessage = error;
+    }
+
+    public void Dispose()
+    {
+        PrimitiveService.Changed -= HandleDocumentChanged;
+    }
 
     private void Add(Func<Primitive> factory)
     {
@@ -91,9 +204,8 @@
 
     private void Align(AlignType type)
     {
-        var selection = PrimitiveService.GetSelection();
-        AlignExtensions.Align<Primitive>(selection, type);
-        PrimitiveService.NotifyPrimitivesChanged(selection);
+        // 服务层事务边界统一处理对齐/通知/撤销，已对齐时不产生历史条目
+        PrimitiveService.Align(type);
     }
 
     private async Task SaveDocument()
@@ -101,49 +213,65 @@
         var json = DocumentSerializer.Serialize(
             PrimitiveService.GetAll().ToList(),
             PrimitiveService.GetSelection().ToList());
+        var previous = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+        if (!string.IsNullOrEmpty(previous))
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", BackupKey, previous);
+        }
+
         await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
+        SetDocumentMessage("Document saved.", error: false);
     }
 
+    /// <summary>读取并校验文档；通过后进入确认步骤，不立即覆盖当前文档。</summary>
     private async Task LoadDocument()
     {
-        var json = await JS.InvokeAsync<string>("localStorage.getItem", StorageKey);
+        _pendingLoad = null;
+        var json = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
         if (string.IsNullOrEmpty(json))
         {
+            SetDocumentMessage("No saved document was found.", error: true);
             return;
         }
 
         var result = DocumentSerializer.Deserialize(json);
         if (result is null)
         {
+            SetDocumentMessage("The saved document is invalid or unsupported.", error: true);
             return;
         }
 
-        PrimitiveService.ReplaceAll(result.Roots);
-
-        // Re-resolve the selection against the rebuilt tree by id.
-        var all = new List<Primitive>();
-        foreach (var root in result.Roots)
-        {
-            Collect(root, all);
-        }
-
-        var byId = all.ToDictionary(p => p.Id);
-        var selected = result.SelectionIds.Where(id => byId.ContainsKey(id)).Select(id => byId[id]).ToList();
-        if (selected.Count > 0)
-        {
-            PrimitiveService.SetSelectedRange(selected);
-        }
+        _pendingLoad = result;
+        SetDocumentMessage(null, error: false);
     }
 
-    private static void Collect(Primitive node, List<Primitive> all)
+    private void ConfirmLoad()
     {
-        all.Add(node);
-        if (node is Container container)
+        if (_pendingLoad is null)
         {
-            foreach (var child in container.Children)
-            {
-                Collect(child, all);
-            }
+            return;
         }
+
+        var result = _pendingLoad;
+        _pendingLoad = null;
+
+        // Deserialize 已保证 Id 唯一；ResolveSelection 会忽略未知 Id
+        var selected = result.ResolveSelection();
+        PrimitiveService.ReplaceAll(result.Roots);
+        // 即使选区为空也显式通知，属性面板必须清空而非保留旧目标
+        PrimitiveService.SetSelectedRange(selected);
+        SetDocumentMessage("Document loaded.", error: false);
+    }
+
+    private void CancelLoad()
+    {
+        _pendingLoad = null;
+        SetDocumentMessage(null, error: false);
+    }
+
+    private void SetDocumentMessage(string? message, bool error)
+    {
+        _documentMessage = message;
+        _documentError = error;
     }
 }

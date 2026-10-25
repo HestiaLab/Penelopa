@@ -12,7 +12,7 @@ namespace Penelopa.Core.Interaction;
 /// <list type="bullet">
 /// <item>按下后指针移动超过阈值才成为拖拽，避免点击时误移动。</item>
 /// <item>拖拽/缩放期间不通知，<see cref="IEditorInteractionHost.NotifyPrimitivesChanged"/> 在提交时触发一次。</item>
-/// <item>取消时从快照恢复手势前的几何状态。</item>
+/// <item>首次真实修改前打开宿主事务；取消时由事务快照精确恢复属性与子元素，而不是重新计算 SetBounds。</item>
 /// </list>
 /// </remarks>
 public sealed class EditorInteractionController
@@ -34,8 +34,6 @@ public sealed class EditorInteractionController
     private List<Primitive> _dragItems = new();
     private Point _lastWorld;
     private Point _lastCss;
-    private float _dragTotalDx;
-    private float _dragTotalDy;
     private bool _isPanGesture;
 
     // 缩放快照
@@ -165,8 +163,6 @@ public sealed class EditorInteractionController
                 {
                     float dx = world.X - _lastWorld.X;
                     float dy = world.Y - _lastWorld.Y;
-                    _dragTotalDx += dx;
-                    _dragTotalDy += dy;
                     foreach (var item in _dragItems)
                     {
                         item.Translate(dx, dy);
@@ -203,6 +199,11 @@ public sealed class EditorInteractionController
             case ControllerState.Dragging:
                 if (!_isPanGesture)
                 {
+                    if (_mutationCaptured)
+                    {
+                        _host.CommitMutation();
+                    }
+
                     _host.NotifyPrimitivesChanged(_dragItems);
                 }
 
@@ -211,6 +212,11 @@ public sealed class EditorInteractionController
             case ControllerState.Resizing:
                 if (_resizeTarget is not null)
                 {
+                    if (_mutationCaptured)
+                    {
+                        _host.CommitMutation();
+                    }
+
                     _host.NotifyPrimitivesChanged(new[] { _resizeTarget });
                 }
 
@@ -220,28 +226,31 @@ public sealed class EditorInteractionController
         ResetGesture();
     }
 
-    /// <summary>取消当前手势（ESC / pointercancel / 丢失捕获 / 窗口失焦），恢复快照几何。</summary>
+    /// <summary>
+    /// 取消当前手势（ESC / pointercancel / 丢失捕获 / 窗口失焦）。
+    /// 通过宿主事务快照精确恢复手势前的属性与子元素，再通知面板刷新。
+    /// </summary>
     public void Cancel()
     {
+        var affected = new List<Primitive>();
         switch (_state)
         {
-            case ControllerState.Dragging:
-                if (!_isPanGesture)
-                {
-                    foreach (var item in _dragItems)
-                    {
-                        item.Translate(-_dragTotalDx, -_dragTotalDy);
-                    }
-                }
-
+            case ControllerState.Dragging when !_isPanGesture:
+                affected.AddRange(_dragItems);
                 break;
 
-            case ControllerState.Resizing:
-                // SetBounds(original, anchor) 对当前叶子形状可精确恢复
-                _resizeTarget?.SetBounds(
-                    _resizeOriginalBounds,
-                    ResizeMath.FixedCorner(_resizeOriginalBounds, _resizeHandle));
+            case ControllerState.Resizing when _resizeTarget is not null:
+                affected.Add(_resizeTarget);
                 break;
+        }
+
+        if (_mutationCaptured)
+        {
+            _host.CancelMutation();
+            if (affected.Count > 0)
+            {
+                _host.NotifyPrimitivesChanged(affected);
+            }
         }
 
         ResetGesture();
@@ -313,8 +322,6 @@ public sealed class EditorInteractionController
         // 从按下点计算全量位移，使选区从按下位置开始跟随指针（而非从越过阈值处）
         float dx = world.X - _pressStart.X;
         float dy = world.Y - _pressStart.Y;
-        _dragTotalDx = dx;
-        _dragTotalDy = dy;
         foreach (var item in _dragItems)
         {
             item.Translate(dx, dy);

@@ -34,3 +34,7 @@ node_modules/
 # Test results
 [Tt]est[Rr]esult*/
 *.trx
+
+# Playwright
+tests/e2e/test-results/
+tests/e2e/playwright-report/

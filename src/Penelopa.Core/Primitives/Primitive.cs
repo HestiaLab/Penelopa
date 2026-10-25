@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using Penelopa.Core.Alignment;
+using Penelopa.Core.Services;
 
 namespace Penelopa.Core.Primitives;
 
@@ -7,12 +9,15 @@ namespace Penelopa.Core.Primitives;
 /// </summary>
 public abstract class Primitive : IAlignable
 {
+    private readonly List<PropValue> _props = new();
+    private readonly ReadOnlyCollection<PropValue> _readOnlyProps;
+
     protected Primitive(string name)
     {
         Id = Guid.NewGuid();
-        Props = new();
+        _readOnlyProps = _props.AsReadOnly();
 
-        Name = new StringPropValue("Name", name);
+        Name = new StringPropValue("Name", name, allowEmpty: false, maxLength: 128, trim: true);
         AddProp(Name);
     }
 
@@ -20,15 +25,32 @@ public abstract class Primitive : IAlignable
 
     public StringPropValue Name { get; }
 
-    public List<PropValue> Props { get; }
+    /// <summary>属性包的只读视图；属性只能在构造期间通过 <see cref="AddProp"/> 注册。</summary>
+    public IReadOnlyList<PropValue> Props => _readOnlyProps;
 
     protected void AddProp(PropValue propValue)
     {
-        Props.Add(propValue);
+        _props.Add(propValue);
     }
 
     /// <summary>父容器，根图元为 null。</summary>
     public Primitive? Parent { get; internal set; }
+
+    /// <summary>所属文档服务；仅由 <see cref="PrimitiveService"/> 维护，用于拒绝跨文档结构操作。</summary>
+    internal PrimitiveService? Owner { get; private set; }
+
+    /// <summary>递归设置文档归属；容器结构变更时由服务或 <see cref="Container"/> 调用。</summary>
+    internal void SetOwnerRecursive(PrimitiveService? owner)
+    {
+        Owner = owner;
+        if (this is Container container)
+        {
+            foreach (var child in container.Children)
+            {
+                child.SetOwnerRecursive(owner);
+            }
+        }
+    }
 
     /// <summary>世界空间轴对齐包围盒。</summary>
     /// <remarks>叶子图元返回局部包围盒，基类通过父容器链映射到世界空间。</remarks>
@@ -77,11 +99,15 @@ public abstract class Primitive : IAlignable
     /// 直接填充的形状忽略此参数。</param>
     /// <returns>实际拟合后的世界空间包围盒。保持宽高比的形状可能不完全填满目标，
     /// 调用方须用返回值修正选区叠加层。</returns>
+    /// <remarks>
+    /// 世界空间到父级局部空间的转换只在派生类的 <see cref="SetBoundsLocal"/> 调用前发生一次；
+    /// 该局部方法只接收和返回父级局部包围盒。
+    /// </remarks>
     public Box SetBounds(Box bounds, Point anchor)
     {
         if (Parent is Container container)
         {
-            var localBounds = container.ToLocalBounds(bounds);
+            var localBounds = container.WorldToLocalBounds(bounds);
             var localAnchor = container.ToLocalPoint(anchor);
             return container.ToWorldBounds(SetBoundsLocal(localBounds, localAnchor));
         }
@@ -89,8 +115,28 @@ public abstract class Primitive : IAlignable
         return SetBoundsLocal(bounds, anchor);
     }
 
-    /// <summary>在局部空间中拟合到给定包围盒。</summary>
+    /// <summary>在父级局部空间中拟合到给定包围盒；入参和返回值都是局部坐标。</summary>
     protected abstract Box SetBoundsLocal(Box bounds, Point anchor);
+
+    /// <summary>
+    /// 是否可以按世界轴对齐包围盒精确缩放：自身或任一祖先容器含旋转/剪切时为 false。
+    /// 此时世界 AABB 无法用局部轴缩放精确表达，交互层应禁用角柄而不是画出错位的框。
+    /// </summary>
+    public bool CanResizeInWorld
+    {
+        get
+        {
+            for (var node = this; node is not null; node = node.Parent)
+            {
+                if (node is Container container && !container.LocalTransform.IsAxisAligned)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
 
     /// <summary>判断给定的世界空间点是否在图元形状内。用于穿透候选收集和框选测试。</summary>
     public bool ContainsWorldPoint(Point point)
@@ -139,7 +185,7 @@ public class Circle : Primitive
     {
         CenterX = new FloatPropValue("CenterX", 10.0f);
         CenterY = new FloatPropValue("CenterY", 10.0f);
-        Radius = new FloatPropValue("Radius", 5.0f);
+        Radius = new FloatPropValue("Radius", 5.0f, exclusiveMinimum: 0f);
         Color = new UintPropValue("Color", 0xFFFFFFFF);
 
         AddProp(CenterX);
@@ -181,7 +227,7 @@ public class Circle : Primitive
         CenterX.Value = centerX;
         CenterY.Value = centerY;
         Radius.Value = radius;
-        return GetWorldBoundingBox();
+        return GetLocalBoundingBox();
     }
 
     protected override bool ContainsLocalPoint(Point point)
@@ -199,8 +245,8 @@ public class Rectangle : Primitive
     {
         PosX = new FloatPropValue("PosX", 10.0f);
         PosY = new FloatPropValue("PosY", 10.0f);
-        Width = new FloatPropValue("Width", 10.0f);
-        Height = new FloatPropValue("Height", 10.0f);
+        Width = new FloatPropValue("Width", 10.0f, exclusiveMinimum: 0f);
+        Height = new FloatPropValue("Height", 10.0f, exclusiveMinimum: 0f);
         Color = new UintPropValue("Color", 0xFFFFFFFF);
 
         AddProp(PosX);
@@ -296,8 +342,8 @@ public class Triangle : Primitive
 
     protected override Box SetBoundsLocal(Box bounds, Point anchor)
     {
-        // 按顶点在当前包围盒中的归一化位置映射，保持形状同时精确填充目标框。锚点隐含在框的角中。
-        var current = GetWorldBoundingBox();
+        // 按顶点在当前局部包围盒中的归一化位置映射，保持形状同时精确填充目标框。锚点隐含在框的角中。
+        var current = GetLocalBoundingBox();
         float scaleX = current.Width > 1e-6f ? bounds.Width / current.Width : 0f;
         float scaleY = current.Height > 1e-6f ? bounds.Height / current.Height : 0f;
 
@@ -307,7 +353,7 @@ public class Triangle : Primitive
         Vertex2Y.Value = bounds.MinY + (Vertex2Y.Value - current.MinY) * scaleY;
         Vertex3X.Value = bounds.MinX + (Vertex3X.Value - current.MinX) * scaleX;
         Vertex3Y.Value = bounds.MinY + (Vertex3Y.Value - current.MinY) * scaleY;
-        return GetWorldBoundingBox();
+        return GetLocalBoundingBox();
     }
 
     protected override bool ContainsLocalPoint(Point point)
