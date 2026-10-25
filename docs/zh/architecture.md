@@ -2,7 +2,7 @@
 
 ## 概述
 
-Penelopa 是一个消费 Atlas.Blazor 0.2.0 NuGet 包的 Blazor WebAssembly 图元对齐编辑器，使用其可停靠工作区外壳。编辑器逻辑分层设计，每个关注点都可以独立测试。
+Penelopa 是一个消费 Atlas.Blazor 0.3.0 NuGet 包的 Blazor WebAssembly 图元对齐编辑器，使用其可停靠工作区外壳。编辑器逻辑分层设计，每个关注点都可以独立测试。
 
 ## 分层
 
