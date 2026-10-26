@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Penelopa.Core.Primitives;
+using Penelopa.Core.Simulation;
 
 namespace Penelopa.Core.Services;
 
@@ -11,8 +13,8 @@ namespace Penelopa.Core.Services;
 /// </summary>
 public static class DocumentSerializer
 {
-    /// <summary>当前文档格式版本。缺失版本视为旧版（版本 0），其数据结构与版本 1 相同。</summary>
-    public const int CurrentVersion = 1;
+    /// <summary>当前文档格式版本。缺失版本视为旧版（版本 0），v1 只含图元，v2 增加可选仿真段。</summary>
+    public const int CurrentVersion = 2;
 
     /// <summary>单文档最大图元数。</summary>
     public const int MaxNodes = 10_000;
@@ -28,6 +30,36 @@ public static class DocumentSerializer
         public int Version { get; set; }
         public List<PrimitiveDto>? Primitives { get; set; }
         public List<Guid>? SelectionIds { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public JsonElement? Simulation { get; set; }
+    }
+
+    private sealed class SimulationDto
+    {
+        public bool Loop { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<SimulationTrackDto>? Tracks { get; set; }
+    }
+
+    private sealed class SimulationTrackDto
+    {
+        public Guid PrimitiveId { get; set; }
+        public string? Property { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<SimulationKeyframeDto>? Keyframes { get; set; }
+    }
+
+    private sealed class SimulationKeyframeDto
+    {
+        public double Time { get; set; }
+        public float Value { get; set; }
+        public string? Interpolation { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<double>? Bezier { get; set; }
     }
 
     private sealed class ParseContext
@@ -53,13 +85,19 @@ public static class DocumentSerializer
         MaxDepth = 256,
     };
 
-    public static string Serialize(IReadOnlyList<Primitive> roots, IEnumerable<Primitive> selection)
+    public static string Serialize(
+        IReadOnlyList<Primitive> roots,
+        IEnumerable<Primitive> selection,
+        SimulationConfig? simulation = null)
     {
         var dto = new DocumentDto
         {
             Version = CurrentVersion,
             Primitives = roots.Select(ToDto).ToList(),
             SelectionIds = selection.Select(p => p.Id).ToList(),
+            Simulation = simulation is null
+                ? null
+                : ToJsonElement(simulation),
         };
         return JsonSerializer.Serialize(dto, Options);
     }
@@ -87,6 +125,11 @@ public static class DocumentSerializer
             var roots = new List<Primitive>();
             foreach (var primitiveDto in dto.Primitives)
             {
+                if (primitiveDto is null)
+                {
+                    throw new ArgumentException("A primitive entry is null.");
+                }
+
                 roots.Add(FromDto(primitiveDto, context, depth: 0));
             }
 
@@ -94,7 +137,9 @@ public static class DocumentSerializer
                 .Where(id => id != Guid.Empty)
                 .Distinct()
                 .ToList();
-            return new DeserializeResult(roots, selectionIds);
+            var warnings = new List<string>();
+            var simulation = ParseSimulation(dto, roots, warnings);
+            return new DeserializeResult(roots, selectionIds, simulation, warnings);
         }
         catch (JsonException)
         {
@@ -134,8 +179,277 @@ public static class DocumentSerializer
         return dto;
     }
 
-    private static Primitive FromDto(PrimitiveDto dto, ParseContext context, int depth)
+    private static JsonElement ToJsonElement(SimulationConfig simulation)
     {
+        var dto = new SimulationDto
+        {
+            Loop = simulation.Loop,
+            Tracks = simulation.Tracks.Select(ToDto).ToList(),
+        };
+        return JsonSerializer.SerializeToElement(dto, Options);
+    }
+
+    private static SimulationTrackDto ToDto(SimulationTrack track)
+    {
+        return new SimulationTrackDto
+        {
+            PrimitiveId = track.PrimitiveId,
+            Property = track.PropertyName,
+            Keyframes = track.Keyframes.Select(ToDto).ToList(),
+        };
+    }
+
+    private static SimulationKeyframeDto ToDto(SimulationKeyframe keyframe)
+    {
+        return new SimulationKeyframeDto
+        {
+            Time = keyframe.Time,
+            Value = keyframe.Value,
+            Interpolation = ToDto(keyframe.Interpolation),
+            Bezier = keyframe.Bezier is { } bezier
+                ? new List<double> { bezier.X1, bezier.Y1, bezier.X2, bezier.Y2 }
+                : null,
+        };
+    }
+
+    private static string ToDto(InterpolationKind interpolation)
+    {
+        return interpolation switch
+        {
+            InterpolationKind.Linear => "linear",
+            InterpolationKind.EaseIn => "ease-in",
+            InterpolationKind.EaseOut => "ease-out",
+            InterpolationKind.EaseInOut => "ease-in-out",
+            InterpolationKind.Step => "step",
+            InterpolationKind.CubicBezier => "cubic-bezier",
+            _ => throw new ArgumentOutOfRangeException(nameof(interpolation)),
+        };
+    }
+
+    private static SimulationConfig? ParseSimulation(
+        DocumentDto dto,
+        IReadOnlyList<Primitive> roots,
+        List<string> warnings)
+    {
+        if (dto.Version < 2
+            || dto.Simulation is not { } element
+            || element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        SimulationDto? simulationDto;
+        try
+        {
+            simulationDto = JsonSerializer.Deserialize<SimulationDto>(
+                element.GetRawText(),
+                Options);
+        }
+        catch (JsonException)
+        {
+            warnings.Add("The saved simulation configuration was ignored because it is invalid.");
+            return null;
+        }
+
+        if (simulationDto is null)
+        {
+            warnings.Add("The saved simulation configuration was ignored because it is invalid.");
+            return null;
+        }
+
+        try
+        {
+            var trackDtos = simulationDto.Tracks ?? new List<SimulationTrackDto>();
+            if (trackDtos.Count > SimulationLimits.MaxTracks)
+            {
+                warnings.Add(
+                    $"The saved simulation configuration was ignored: A simulation can contain at most {SimulationLimits.MaxTracks} tracks.");
+                return null;
+            }
+
+            var rawKeyframeCount = 0L;
+            foreach (var trackDto in trackDtos)
+            {
+                if (trackDto is null)
+                {
+                    warnings.Add(
+                        "The saved simulation configuration was ignored: A simulation track is null.");
+                    return null;
+                }
+
+                rawKeyframeCount += trackDto.Keyframes?.Count ?? 0;
+            }
+
+            if (rawKeyframeCount > SimulationLimits.MaxKeyframesTotal)
+            {
+                warnings.Add(
+                    $"The saved simulation configuration was ignored: A simulation can contain at most {SimulationLimits.MaxKeyframesTotal} keyframes.");
+                return null;
+            }
+
+            // Dormant/孤儿轨道先剪除，再做结构/值校验；结构非法的 Active 仍然整段丢弃。
+            var index = SimulationPrimitiveIndex.Create(roots);
+            var activeTracks = new List<SimulationTrack>();
+            var dormantCount = 0;
+            foreach (var trackDto in trackDtos)
+            {
+                if (string.IsNullOrWhiteSpace(trackDto.Property))
+                {
+                    warnings.Add(
+                        "The saved simulation configuration was ignored: A simulation track is missing a property name.");
+                    return null;
+                }
+
+                if (!index.TryGetPrimitive(trackDto.PrimitiveId, out _)
+                    || !index.TryGetFloatProperty(
+                        trackDto.PrimitiveId,
+                        trackDto.Property,
+                        out _))
+                {
+                    dormantCount++;
+                    continue;
+                }
+
+                activeTracks.Add(FromDto(trackDto));
+            }
+
+            var config = new SimulationConfig(simulationDto.Loop, activeTracks);
+            var structureIssues = SimulationValidator.ValidateStructure(config);
+            if (structureIssues.Count > 0)
+            {
+                warnings.Add(
+                    $"The saved simulation configuration was ignored: {structureIssues[0].Message}");
+                return null;
+            }
+
+            var resolution = SimulationResolver.Resolve(config, index);
+            var valueIssues = SimulationValidator.ValidateValues(resolution.Active);
+            if (valueIssues.Count > 0)
+            {
+                warnings.Add(
+                    $"The saved simulation configuration was ignored: {valueIssues[0].Message}");
+                return null;
+            }
+
+            if (dormantCount > 0)
+            {
+                warnings.Add(
+                    $"Removed {dormantCount} simulation track(s) whose primitives or properties no longer exist.");
+            }
+
+            return config;
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or InvalidOperationException or OverflowException)
+        {
+            warnings.Add($"The saved simulation configuration was ignored: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static SimulationTrack FromDto(SimulationTrackDto trackDto)
+    {
+        if (trackDto is null)
+        {
+            throw new FormatException("A simulation track is null.");
+        }
+
+        if (trackDto.Property is null)
+        {
+            throw new FormatException("A simulation track is missing a property name.");
+        }
+
+        if (trackDto.Keyframes is null || trackDto.Keyframes.Count == 0)
+        {
+            throw new FormatException("A simulation track has no keyframes.");
+        }
+
+        var keyframes = new List<SimulationKeyframe>(trackDto.Keyframes.Count);
+        foreach (var keyframeDto in trackDto.Keyframes)
+        {
+            if (keyframeDto is null)
+            {
+                throw new FormatException("A simulation keyframe is null.");
+            }
+
+            keyframes.Add(FromDto(keyframeDto));
+        }
+
+        return new SimulationTrack(
+            trackDto.PrimitiveId,
+            trackDto.Property,
+            keyframes);
+    }
+
+    private static SimulationKeyframe FromDto(SimulationKeyframeDto dto)
+    {
+        var interpolation = FromDto(dto.Interpolation);
+        CubicBezier? bezier = null;
+        if (dto.Bezier is not null)
+        {
+            if (dto.Bezier.Count != 4)
+            {
+                throw new FormatException(
+                    "Cubic-bezier control points must contain four values.");
+            }
+
+            bezier = new CubicBezier(
+                dto.Bezier[0],
+                dto.Bezier[1],
+                dto.Bezier[2],
+                dto.Bezier[3]);
+        }
+
+        return new SimulationKeyframe(dto.Time, dto.Value, interpolation, bezier);
+    }
+
+    private static InterpolationKind FromDto(string? interpolation)
+    {
+        if (interpolation is null)
+        {
+            throw new FormatException("A simulation keyframe is missing an interpolation kind.");
+        }
+
+        if (string.Equals(interpolation, "linear", StringComparison.OrdinalIgnoreCase))
+        {
+            return InterpolationKind.Linear;
+        }
+
+        if (string.Equals(interpolation, "ease-in", StringComparison.OrdinalIgnoreCase))
+        {
+            return InterpolationKind.EaseIn;
+        }
+
+        if (string.Equals(interpolation, "ease-out", StringComparison.OrdinalIgnoreCase))
+        {
+            return InterpolationKind.EaseOut;
+        }
+
+        if (string.Equals(interpolation, "ease-in-out", StringComparison.OrdinalIgnoreCase))
+        {
+            return InterpolationKind.EaseInOut;
+        }
+
+        if (string.Equals(interpolation, "step", StringComparison.OrdinalIgnoreCase))
+        {
+            return InterpolationKind.Step;
+        }
+
+        if (string.Equals(interpolation, "cubic-bezier", StringComparison.OrdinalIgnoreCase))
+        {
+            return InterpolationKind.CubicBezier;
+        }
+
+        throw new FormatException($"Unknown interpolation kind '{interpolation}'.");
+    }
+
+    private static Primitive FromDto(PrimitiveDto? dto, ParseContext context, int depth)
+    {
+        // JSON 数组允许 null 元素；localStorage 属不可信输入，必须给出可诊断的拒绝。
+        if (dto is null)
+        {
+            throw new ArgumentException("A primitive entry is null.");
+        }
+
         if (depth > MaxDepth)
         {
             throw new ArgumentException("Document nesting is too deep.");
@@ -231,15 +545,27 @@ public static class DocumentSerializer
 /// <summary>文档反序列化结果。</summary>
 public sealed class DeserializeResult
 {
-    public DeserializeResult(IReadOnlyList<Primitive> roots, IReadOnlyList<Guid> selectionIds)
+    public DeserializeResult(
+        IReadOnlyList<Primitive> roots,
+        IReadOnlyList<Guid> selectionIds,
+        SimulationConfig? simulation = null,
+        IReadOnlyList<string>? warnings = null)
     {
         Roots = roots;
         SelectionIds = selectionIds;
+        Simulation = simulation;
+        Warnings = warnings is null ? Array.Empty<string>() : warnings.ToArray();
     }
 
     public IReadOnlyList<Primitive> Roots { get; }
 
     public IReadOnlyList<Guid> SelectionIds { get; }
+
+    /// <summary>保存的仿真配置；v1 文档或无 simulation 段时为 null。</summary>
+    public SimulationConfig? Simulation { get; }
+
+    /// <summary>加载仿真段时产生的警告（非法段被丢弃、悬空轨道被剪除等）。</summary>
+    public IReadOnlyList<string> Warnings { get; }
 
     /// <summary>按 Id 在重建的树中解析选区；未知 Id 被忽略。</summary>
     public IReadOnlyList<Primitive> ResolveSelection()

@@ -42,7 +42,7 @@
 | 安全 | **够用** | 无已知依赖漏洞，无 `MarkupString`/`innerHTML` 注入面，数据仅存 `localStorage`；但加载校验、文档格式版本、CSP 缺失 |
 | 性能 | **弱** | 持续渲染循环 + 每帧分配；Release 空文档空闲约占 28% CPU，500 个简单矩形达到 99.8% CPU |
 | 可访问性 | **弱** | 画布不可聚焦、无角色/键盘路径；属性输入与标签无语义关联；树/状态栏缺少 ARIA 状态；禁用了页面缩放 |
-| 工具链长期风险 | **战略项** | .NET 6 已 EOL、Node 20 已 EOL、SkiaSharp 2.88.9 与 Atlas 0.3.0 偏旧；`Penelopa.csproj` 含机器相关的 VS 硬编码 |
+| 工具链长期风险 | **战略项** | .NET 6 已 EOL、Node 20 已 EOL、SkiaSharp 2.88.9 与 Atlas 0.3.0 偏旧；`Penelopa.Web.csproj` 含机器相关的 VS 硬编码 |
 
 ---
 
@@ -133,7 +133,7 @@
 
 **位置**
 
-- `src/Penelopa/Components/Panels/Props/FloatProp.razor:6`（`@bind="PropValue.Value"` 直接写入）
+- `src/Penelopa.Web/Components/Panels/Props/FloatProp.razor:6`（`@bind="PropValue.Value"` 直接写入）
 - `src/Penelopa.Core/Primitives/PropValue.cs:81-88`（`FloatPropValue` 无校验）
 - `src/Penelopa.Core/Primitives/Primitive.cs:156-163`、`219-226`（负半径/负宽高生成逆包围盒）
 - `src/Penelopa.Core/Alignment/Box.cs:18`（`minX > maxX` 抛 `ArgumentException`）
@@ -164,10 +164,10 @@
 
 **位置**
 
-- `src/Penelopa/Components/Panels/ToolPanel.razor:92-97`（`Align` 只调用 `AlignExtensions` 和 `NotifyPrimitivesChanged`，没有 `CaptureForGesture`）
-- `src/Penelopa/Components/Panels/Props/FloatProp.razor:6`（属性直接绑定，未通知也未捕获历史）
+- `src/Penelopa.Web/Components/Panels/ToolPanel.razor:92-97`（`Align` 只调用 `AlignExtensions` 和 `NotifyPrimitivesChanged`，没有 `CaptureForGesture`）
+- `src/Penelopa.Web/Components/Panels/Props/FloatProp.razor:6`（属性直接绑定，未通知也未捕获历史）
 - `src/Penelopa.Core/Services/DocumentHistory.cs:5-9`（注释明确“只在结构变更或拖拽/缩放开始前捕获”）
-- `src/Penelopa/ts/penelopa.ts:186-202`（全局 `keydown`，未排除输入控件）
+- `src/Penelopa.Web/ts/penelopa.ts:186-202`（全局 `keydown`，未排除输入控件）
 
 **实测证据**
 
@@ -226,10 +226,10 @@
 
 **位置**
 
-- `src/Penelopa/ts/penelopa.ts:62-65`（`rect: null`）
-- `src/Penelopa/ts/penelopa.ts:74-81`（`toCss` 直接 `state.rect as DOMRect`）
-- `src/Penelopa/ts/penelopa.ts:103`（只在 `pointerdown` 时 `refreshRect()`）
-- `src/Penelopa/ts/penelopa.ts:204-211`（`onWheel` 未初始化 rect 就调用 `toCss`）
+- `src/Penelopa.Web/ts/penelopa.ts:62-65`（`rect: null`）
+- `src/Penelopa.Web/ts/penelopa.ts:74-81`（`toCss` 直接 `state.rect as DOMRect`）
+- `src/Penelopa.Web/ts/penelopa.ts:103`（只在 `pointerdown` 时 `refreshRect()`）
+- `src/Penelopa.Web/ts/penelopa.ts:204-211`（`onWheel` 未初始化 rect 就调用 `toCss`）
 
 **实测证据**
 
@@ -283,9 +283,9 @@
 **位置**
 
 - `src/Penelopa.Core/Services/PrimitiveService.cs:59-70`（`ReplaceAll` 清空选择，只触发 `OnCollectionChanged`，不触发 `OnSelectionChanged`）
-- `src/Penelopa/Components/Panels/CanvasPanel.razor:48-54`（订阅事件但不从服务初始化 `_primitives`/`_selection`）
-- `src/Penelopa/Components/Panels/PropertyPanel.razor:56-60`（只依赖 `OnSelectionChanged` 更新目标）
-- `src/Penelopa/Components/Panels/ToolPanel.razor:121-135`（加载后只在 `selected.Count > 0` 时设置选区）
+- `src/Penelopa.Web/Components/Panels/CanvasPanel.razor:48-54`（订阅事件但不从服务初始化 `_primitives`/`_selection`）
+- `src/Penelopa.Web/Components/Panels/PropertyPanel.razor:56-60`（只依赖 `OnSelectionChanged` 更新目标）
+- `src/Penelopa.Web/Components/Panels/ToolPanel.razor:121-135`（加载后只在 `selected.Count > 0` 时设置选区）
 - `src/Penelopa.Core/Interaction/EditorInteractionController.cs:224-248`（`Cancel` 不调用 `NotifyPrimitivesChanged`）
 
 **实测证据**
@@ -318,8 +318,8 @@
 - `src/Penelopa.Rendering/CanvasRenderer.cs:369-401`（每帧清空、重建两个画布与颜色映射）
 - `src/Penelopa.Rendering/CanvasRenderer.cs:472-561`（每个图元每帧 `new SKPaint`/`new SKPath`）
 - `src/Penelopa.Rendering/CanvasRenderer.cs:282-342`（每次绘制选择框新建画笔）
-- `src/Penelopa/Components/Panels/CanvasPanel.razor:17`（`EnableRenderLoop="true"` 持续渲染）
-- `src/Penelopa/Components/Panels/CanvasPanel.razor:200-211`（未释放 `CanvasRenderer`；渲染器本身未实现 `IDisposable`）
+- `src/Penelopa.Web/Components/Panels/CanvasPanel.razor:17`（`EnableRenderLoop="true"` 持续渲染）
+- `src/Penelopa.Web/Components/Panels/CanvasPanel.razor:200-211`（未释放 `CanvasRenderer`；渲染器本身未实现 `IDisposable`）
 
 **实测证据（Release 发布产物，Chrome headless，1440×900）**
 
@@ -352,8 +352,8 @@
 
 - `src/Penelopa.Rendering/CanvasRenderer.cs:146-157`（`SetDevicePixelRatio` 用默认 zoom/pan 重建）
 - `src/Penelopa.Rendering/CanvasRenderer.cs:159-177`（`EnsureBuffersFor` 在尺寸/DPR 变化时同样重置）
-- `src/Penelopa/wwwroot/css/app.css:504-513`（内层 canvas 有 1px border）
-- `src/Penelopa/ts/penelopa.ts:74-81`（指针坐标相对外层 `.penelopa-canvas` div）
+- `src/Penelopa.Web/wwwroot/css/app.css:504-513`（内层 canvas 有 1px border）
+- `src/Penelopa.Web/ts/penelopa.ts:74-81`（指针坐标相对外层 `.penelopa-canvas` div）
 
 **实测证据**
 
@@ -379,8 +379,8 @@
 
 - `src/Penelopa.Core/Services/DocumentSerializer.cs:12-16`（DTO 无 schema 版本）
 - `src/Penelopa.Core/Services/DocumentSerializer.cs:104-114`（直接采用 JSON 中的 `Id`）
-- `src/Penelopa/Components/Panels/ToolPanel.razor:130-131`（`ToDictionary(p => p.Id)`）
-- `src/Penelopa/Components/Panels/ToolPanel.razor:107-136`（加载无确认、无规模限制）
+- `src/Penelopa.Web/Components/Panels/ToolPanel.razor:130-131`（`ToDictionary(p => p.Id)`）
+- `src/Penelopa.Web/Components/Panels/ToolPanel.razor:107-136`（加载无确认、无规模限制）
 
 **实测证据**
 
@@ -443,7 +443,7 @@
 
 **位置**
 
-- `src/Penelopa/Components/PenelopaWorkspaceDefinition.cs:84-95`（左右各 300px 固定像素）
+- `src/Penelopa.Web/Components/PenelopaWorkspaceDefinition.cs:84-95`（左右各 300px 固定像素）
 - 布局说明：`README.md:19`、`docs/en/architecture.md:72-77`
 
 **实测宽度（画布可视宽度）**
@@ -477,11 +477,11 @@
 
 **位置**
 
-- `src/Penelopa/Components/Panels/Props/FloatProp.razor:4-6`、`DoubleProp.razor:4-6`、`IntProp.razor:4-6`、`UintProp.razor:4-6`（`label` 无 `for`，`input` 无 `id`/`aria-label`）
-- `src/Penelopa/Components/Panels/CanvasPanel.razor:15-19`（画布容器无 `tabindex`/`role`/`aria-label`）
-- `src/Penelopa/Components/Panels/PrimitiveTreePanel.razor:73-80`（选中只用 CSS class，无 `aria-pressed`/`aria-current`）
-- `src/Penelopa/Components/PenelopaStatusBar.razor:3-8`（无 `aria-live`）
-- `src/Penelopa/wwwroot/index.html:6`（`maximum-scale=1.0, user-scalable=no`）
+- `src/Penelopa.Web/Components/Panels/Props/FloatProp.razor:4-6`、`DoubleProp.razor:4-6`、`IntProp.razor:4-6`、`UintProp.razor:4-6`（`label` 无 `for`，`input` 无 `id`/`aria-label`）
+- `src/Penelopa.Web/Components/Panels/CanvasPanel.razor:15-19`（画布容器无 `tabindex`/`role`/`aria-label`）
+- `src/Penelopa.Web/Components/Panels/PrimitiveTreePanel.razor:73-80`（选中只用 CSS class，无 `aria-pressed`/`aria-current`）
+- `src/Penelopa.Web/Components/PenelopaStatusBar.razor:3-8`（无 `aria-live`）
+- `src/Penelopa.Web/wwwroot/index.html:6`（`maximum-scale=1.0, user-scalable=no`）
 
 **实测证据**
 
@@ -509,9 +509,9 @@
 
 **位置**
 
-- `src/Penelopa/ts/penelopa.ts:40-57`（`watchDpr` 返回 `void`，注册 `matchMedia` 监听）
-- `src/Penelopa/ts/penelopa.ts:224-237`（`attachPointer` 返回 dispose，但 DPR 监听不在其中）
-- `src/Penelopa/Components/Panels/CanvasPanel.razor:200-211`（仅释放 pointer handle 与 `DotNetObjectReference`）
+- `src/Penelopa.Web/ts/penelopa.ts:40-57`（`watchDpr` 返回 `void`，注册 `matchMedia` 监听）
+- `src/Penelopa.Web/ts/penelopa.ts:224-237`（`attachPointer` 返回 dispose，但 DPR 监听不在其中）
+- `src/Penelopa.Web/Components/Panels/CanvasPanel.razor:200-211`（仅释放 pointer handle 与 `DotNetObjectReference`）
 
 **影响**
 
@@ -536,8 +536,8 @@
 | `docs/en/architecture.md:140`：应用快照“重新注册颜色键” | 颜色键是渲染器每帧临时映射，无持久注册 |
 | `docs/en/architecture.md:165`：未来才做 hit-through 钻取 | 已实现 `PickAll` + 控制器钻取（`:253-285`） |
 | `README.md:19`：top toolbar 和 status bar 作为功能 | 两个组件是静态占位（`PenelopaTopToolbar.razor:3-5`、`PenelopaStatusBar.razor:3-8`） |
-| `README.md:40-49`：Requirements 只列 .NET 6 与 wasm-tools | 构建目标 `Penelopa.csproj:28-31` 无条件执行 `npm run build:js`，无 Node 会失败 |
-| `Penelopa.csproj:22-27`：编译产物已提交，所以“无 node 也能构建” | 同上，`Exec` 没有 Node 可用性条件，注释与行为矛盾 |
+| `README.md:40-49`：Requirements 只列 .NET 6 与 wasm-tools | 构建目标 `Penelopa.Web.csproj:28-31` 无条件执行 `npm run build:js`，无 Node 会失败 |
+| `Penelopa.Web.csproj:22-27`：编译产物已提交，所以“无 node 也能构建” | 同上，`Exec` 没有 Node 可用性条件，注释与行为矛盾 |
 | `app.css:471-474`：画布保留最小内容尺寸、出现滚动条 | `.penelopa-canvas` 的 `min-width/min-height` 为 0，实际由 `ViewTransform` 平移/缩放，无内容滚动条 |
 
 **影响**
@@ -617,9 +617,9 @@ README 和 architecture 是这个项目最强的资产之一；漂移会让新�
 
 **位置**
 
-- `src/Penelopa/wwwroot/index.html:9`（完整 Bootstrap 159KB）
-- `src/Penelopa/wwwroot/css/app.css:1`（Open Iconic 9.2KB + 字体）
-- `src/Penelopa/wwwroot/index.html:22`（指针脚本）
+- `src/Penelopa.Web/wwwroot/index.html:9`（完整 Bootstrap 159KB）
+- `src/Penelopa.Web/wwwroot/css/app.css:1`（Open Iconic 9.2KB + 字体）
+- `src/Penelopa.Web/wwwroot/index.html:22`（指针脚本）
 - `.github/workflows/ci.yml`（无覆盖率/E2E/依赖审计）
 - `.github/workflows/deploy-pages.yml:4`（仅手动触发）
 - 无 `packages.lock.json`；CI 不检查编译后的 `penelopa.js` 是否与 TS 同步
@@ -646,7 +646,7 @@ README 和 architecture 是这个项目最强的资产之一；漂移会让新�
 | Node | `ci.yml:23/39`、`deploy-pages.yml:40` 使用 Node 20 | Node 20 已于 2026-04 EOL | 升到 Node 22/24，更新 npm lock 与 CI |
 | SkiaSharp | `Directory.Packages.props:9-11` 锁定 2.88.9 | 原生库较旧；4.x 要求 net8+，与当前 net6 冲突 | 随 .NET 升级一起评估 3.x/4.x、WASM 资产与尺寸；不要单独升级到 4.x |
 | Atlas.Blazor | 0.3.0 | 工作区 API/行为漂移，且是黑盒依赖 | 跟踪版本、加工作区集成测试；在升级时对照 `PenelopaWorkspaceDefinition` |
-| VS 构建 | `Penelopa.csproj:39-66` 硬编码 6.0.36 的 Emscripten/Node/Mono/AOT 路径 | 换机器/升级 SDK/非 Windows 即失效；维护成本高 | 以 CLI 为官方构建路径；net8 后删除该块；文档写明 VS 例外 |
+| VS 构建 | `Penelopa.Web.csproj:39-66` 硬编码 6.0.36 的 Emscripten/Node/Mono/AOT 路径 | 换机器/升级 SDK/非 Windows 即失效；维护成本高 | 以 CLI 为官方构建路径；net8 后删除该块；文档写明 VS 例外 |
 | 固定 300px 双栏 | `PenelopaWorkspaceDefinition.cs:84-95` | 窄屏不可用 | 与 F-12 一起做响应式产品决策 |
 
 这些项不进入本报告的 P0–P2 排序；建议在 Phase A/B 稳定后单独立项，避免迁移与业务修复互相干扰。

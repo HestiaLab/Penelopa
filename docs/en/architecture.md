@@ -9,7 +9,7 @@ logic is layered so each concern is independently testable.
 ## Layers
 
 ```text
-src/Penelopa (WASM app)
+src/Penelopa.Web (WASM app)
   ├── Components/PenelopaWorkspace.razor   Atlas six-region dockable layout
   ├── Components/PenelopaTopToolbar.razor  Hosted in the Atlas top toolbar slot
   ├── Components/PenelopaStatusBar.razor   Hosted in the Atlas status bar slot
@@ -47,6 +47,13 @@ Pure domain logic with no UI or SkiaSharp dependency:
   primitives by reference plus every property value and container child list;
   selection is not captured (see ADR-0002). Every mutation creates at most one
   undo entry, and cancellation applies the same snapshot as undo.
+- `Simulation/` — immutable keyframe configuration (`SimulationConfig`,
+  `SimulationTrack`, `SimulationKeyframe`), structural/domain validation, a
+  deterministic evaluator (linear, ease presets, step and cubic-bezier with
+  control points in `[0,1]`), the global timeline, the preview-isolated
+  `SimulationRuntime`, the singleton `SimulationConfigStore` (50-step config
+  history and dormant resolution), and the sampling
+  `SimulationBoundsEstimator`. It has no Blazor, SkiaSharp or JS dependency.
 
 ### Penelopa.Rendering
 
@@ -284,14 +291,37 @@ invalid.
 stored by type with their property values (color keys excluded — they are
 rebuilt on load), containers nest their children, and the selection is
 saved as primitive ids so it re-resolves against the rebuilt tree.
-Documents carry `Version` 1; missing versions are accepted as legacy v1 and
-future/negative versions are rejected. Loading validates non-empty unique
-ids, rejects children under non-containers and enforces node (10,000),
-depth (64) and UTF-8 size (4 MiB) limits. The Tools panel saves the previous
-document to `penelopa.document.backup`, parses and validates a load before
-asking for confirmation, shows a readable error while keeping the current
-document on failure, and always applies the resolved selection (including
-the empty one). Data lives in `localStorage` under `penelopa.document`.
+Documents carry `Version` 2; versionless/v1 documents are accepted with no
+simulation configuration, and future/negative versions are rejected. The
+optional `simulation` section stores the loop flag and tracks (primitive id,
+Float property name, ordered keyframes with time/value/interpolation). Loading
+validates geometry strictly and validates the simulation section separately:
+targets are resolved first, and tracks whose primitive/property no longer
+exists are pruned with a warning before structural/value validation. A
+structurally invalid active track still discards the whole simulation section
+with a warning while the document loads. Raw track/keyframe count limits are
+checked before pruning. Dormant tracks are never written on save. Loading validates non-empty unique ids, rejects children under
+non-containers and enforces node (10,000), depth (64) and UTF-8 size (4 MiB)
+limits. JSON arrays with `null` primitive or child entries are rejected as an
+invalid document instead of dereferencing null.
+
+`DocumentStorage` is the shared save/load boundary for the Tools panel and the
+simulation page: it serializes document v2, keeps the previous payload in
+`penelopa.document.backup`, and turns JS failures into displayable errors.
+localStorage access goes through the `penelopa.readStorage`/`writeStorage`
+helpers, which return result objects instead of throwing, so expected quota or
+security failures do not reach Blazor's global error UI. Its load boundary
+converts any remaining unexpected exception into a
+`DocumentLoadResult` error, so a corrupt payload cannot tear down the renderer;
+the full exception is logged while the UI shows a single-line summary. The
+Tools panel parses and validates a load before asking for confirmation,
+shows a readable error while keeping the current document on failure, and
+always applies the resolved selection (including the empty one). Loading
+replaces both the document and the simulation configuration. The panel uses a
+single pending operation (dormant save or load confirmation); starting a load
+cancels an unconfirmed dormant save, and a confirmed save recomputes the
+current active/dormant tracks instead of reusing an old snapshot. Data lives
+in `localStorage` under `penelopa.document`.
 
 ### Interaction
 
@@ -326,8 +356,95 @@ snapshot rather than recomputing bounds.
   single undo entry). `PropEditorBase` centralizes conflict display and
   atomic batch writes.
 
+### Simulation
+
+The `/simulation` page (`Pages/SimulationPage.razor`) shares the singleton
+`IPrimitiveService` and `SimulationConfigStore` with the editor but keeps its
+own local selection. Its canvas is read-only: no hit testing, drag, resize or
+selection overlay, and the visual surface is exposed as `role="img"` while the
+Fit button remains an ordinary button. The layout is a fixed three-column body
+(primitive tree, canvas, inspector) with a transport bar and a global timeline.
+
+`SimulationRuntime` is a deterministic preview session. On the first Play /
+seek / step it captures every Float property's base value, resolves tracks into
+active and dormant sets, and evaluates keyframes at the requested time. The
+runtime writes evaluated values transiently and restores the base values on
+`Stop`, page exit or an error; it never creates document-history entries. Page
+exit (including browser back) stops the runtime synchronously before JS handles
+are awaited and notifies the shared primitive service once, so the editor's
+property panel and canvas re-read the restored values without a reselection.
+It has five states (`Ready`, `Preview`, `Playing`, `Paused`, `Finished`) and a
+single global absolute timeline `0..T`, where `T` is the last keyframe time
+across active tracks. Playback either wraps the whole timeline (Loop) or reaches
+`Finished` and holds the last frame.
+
+A JS `requestAnimationFrame` loop calls `OnSimulationFrame`; the page advances
+the runtime from a monotonic `Stopwatch` rather than accumulating frame deltas,
+stops the loop in Ready/Paused/Finished, and pauses playback when the tab is
+hidden. While `Playing`, the SKGLView render loop is enabled because on-demand
+`Invalidate` calls can otherwise be coalesced with the simulation rAF to about
+30 paint/s; Ready/Paused/Finished return to on-demand rendering. A
+`SimulationReadoutChannel` publishes time
+and track values at 20 Hz. Only small subscribers consume it (the time readout,
+per-property current values, the playhead and the native scrubber), so the
+inspector table and timeline markers are not re-rendered on the readout path
+and the primitive tree or whole page stays untouched.
+
+Rendering uses the render-only path
+(`CanvasRenderer.Render(..., renderHitBuffer: false)` and a null hit canvas in
+`ScenePainter`), so playback skips the color-key buffer and the selection
+overlay. `SimulationBoundsEstimator` samples keyframe times and adjacent
+midpoints, unions the world bounds and restores the base values; it drives the
+initial animation-aware Fit and the Fit button.
+
+The inspector creates a track with **Animate**, which places two keyframes at
+the playhead and `+1s`; it adds/updates keyframes at the playhead, edits
+time/value/interpolation/custom cubic-bezier control points, deletes
+keyframes/tracks and shows live track values. Values are labelled as relative
+to the parent. The timeline shows only the selected widget's tracks, with a
+ruler, a native range playhead, zoom/scroll and focusable keyframe markers.
+Clicking a ruler tick seeks to that time and double-clicking a marker invokes
+the same Go to path as the inspector. Dragging a marker retimes it with pointer
+capture acquired only after real movement (so click and double-click still
+target the marker), 1/60s snapping, a 1 ms minimum gap and neighbour clamping;
+the inspector is the keyboard alternative and provides Go to. Keyframe
+selection is anchored by time, so deleting or undoing a neighbouring keyframe
+follows the same keyframe instead of jumping to another index.
+
+Configuration edits are allowed in Ready, Preview, Paused and Finished, but not
+while Playing. A separate 50-step configuration history (buttons plus
+Ctrl+Z/Ctrl+Y when focus is outside a text field) is cleared on page entry and
+document load and never shares entries with the document history. Invalid
+active tracks block playback; the page shows all blocking issues in a polite
+summary while field edits keep inline errors. Dormant tracks are listed in a
+page banner with counts, expandable details (primitive id, property, keyframe
+count), per-track removal, and an explicit remove-all action; cleanup is
+undoable. Save is enabled only in Ready and writes the document plus the active
+simulation configuration; if dormant tracks exist, Save requires confirmation
+and excludes them. Removing the last dormant track clears a pending save
+confirmation.
+
+Measured performance in the periodic harness: 500 primitives with 100 active
+tracks run at 59.9–60.2 JS rAF ticks/s, 59.9–60.0 executed .NET frames/s and
+59.9–60.1 SKGLView paint/s; Ready after Stop idles at 2.94–3.75% main-thread CPU in the reference
+headless Chromium/1440×900 run. Selecting a 200-keyframe track and playing for
+five seconds measures about 60 ticks/s and 60 paint/s (59.79–60.18 and
+59.76–60.04 across runs). The harness reads three
+separate counters (rAF attempts, `OnSimulationFrame` executions and
+`OnPaintSurface` callbacks); tick alone was insufficient. These counters are
+attached to `window.penelopa` only when the PERF harness sets
+`__PENELOPA_PERF__` before app startup; normal editor/simulation pages expose
+no performance-counter API.
+
 ## Accessibility
 
+- The simulation page provides an `h1` (with `tabindex="-1"`) focused on
+  navigation, never autoplays, exposes the canvas as `role="img"`, uses native
+  transport buttons and `aria-live="polite"` state/error regions, associates labels and
+  `aria-describedby` with keyframe fields, and keeps a keyboard-editable
+  keyframe inspector as the alternative to timeline dragging. It reports
+  `prefers-reduced-motion` with a hint while still allowing user-initiated
+  playback. The 20 Hz time/value readouts are intentionally not live regions.
 - The canvas is a focusable `role="application"` surface named
   `Drawing canvas`, with a visually hidden description of the keyboard path.
   Arrow keys move the top-level selection by 1 world unit (Shift = 10),
@@ -356,6 +473,11 @@ test records that Atlas 0.3.0 does not clamp the initial proportional tracks to
 the 160px minimum; if an Atlas upgrade starts clamping them, that test and this
 section must be revisited.
 
+The simulation page is a fixed three-column layout with a bottom timeline.
+Its columns narrow at 1024px and 820px; the timeline scrolls horizontally when
+zoomed and vertically when many tracks are present. It reuses the
+`--penelopa-*` theme tokens.
+
 ## Extending primitives and properties
 
 There is no type registry yet. Adding a primitive type still requires:
@@ -371,7 +493,9 @@ visitor is a larger refactor and was intentionally not added in Phase C.
 Atlas workspaces are sized by their parent; the editor shell must chain
 `html/body/#app/.penelopa-main/.penelopa-shell/.atlas-v2-workspace` to 100%
 height (see `wwwroot/css/app.css`). The top toolbar and status bar render
-inside the Atlas host, above and below the work area.
+inside the Atlas host, above and below the work area. The simulation page
+chains `.penelopa-simulation` through `html/body/#app/.penelopa-main` and uses
+its own header/body/timeline flex column (see `wwwroot/css/simulation.css`).
 
 ## Alignment Semantics
 
@@ -399,6 +523,7 @@ two items returns false without moving.
 | [0002](../adr/0002-history-transactions-and-snapshots.md) | History transactions and snapshot contents |
 | [0003](../adr/0003-selection-model.md) | Selection normalization and multi-selection editing |
 | [0004](../adr/0004-grouping-deferred.md) | Grouping and ungrouping existing primitives |
+| [0005](../adr/0005-simulation-keyframe-timeline.md) | Simulation keyframe timeline, preview isolation and persistence |
 
 ## Toolchain Notes
 
@@ -426,11 +551,12 @@ two items returns false without moving.
 - Bootstrap and the Open Iconic font package were removed in Phase C. The
   remaining form/panel styles live in `wwwroot/css/app.css`; the application
   ships only Atlas.Blazor CSS, the app stylesheet and the editor assets.
-- Tests: xUnit covers Core/Rendering, bUnit (`tests/Penelopa.Ui.Tests`) covers
+- Tests: xUnit covers Core/Rendering, bUnit (`tests/Penelopa.Web.Tests`) covers
   panel state, ARIA wiring and persistence UI, and Playwright (`tests/e2e`)
   drives the real editor in Chromium at desktop and narrow viewports. CI runs
   JS/Node tests, the generated JS drift check, coverage gates (Core ≥90%,
-  Rendering ≥85%), the Chromium E2E job, and dependency audits
+  Rendering ≥85%) plus per-file ≥90% gates for `Simulation/` and
+  `DocumentSerializer`, the Chromium E2E job, and dependency audits
   (`npm audit` for both package roots and
   `dotnet list package --vulnerable --include-transitive`). The NuGet audit
   fails on high/critical findings. A moderate AngleSharp mXSS advisory remains
@@ -445,4 +571,5 @@ two items returns false without moving.
   measures ~0.03% idle main-thread CPU for an empty document and ~0.02% for
   500 rectangles (headless Chromium, Debug dev server); the former continuous
   loop was ~28% idle CPU in the original audit. The benchmark lives in
-  `tests/e2e/tests/perf.spec.ts` and is skipped unless `PERF=1`.
+  `tests/e2e/tests/perf.spec.ts` and `tests/e2e/tests/simulation-perf.spec.ts`
+  and is skipped unless `PERF=1`.

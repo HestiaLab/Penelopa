@@ -24,7 +24,7 @@ jobs:
       - run: npm ci
       - run: npm run check:js
       - run: npm run test:js
-      - run: git diff --exit-code -- src/Penelopa/wwwroot/js/penelopa.js
+      - run: git diff --exit-code -- src/Penelopa.Web/wwwroot/js/penelopa.js
       - run: dotnet restore Penelopa.sln --locked-mode
       - run: dotnet build Penelopa.sln --no-restore
       - run: dotnet test Penelopa.sln --no-build --no-restore

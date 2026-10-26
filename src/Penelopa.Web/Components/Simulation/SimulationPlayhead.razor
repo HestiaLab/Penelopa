@@ -1,0 +1,76 @@
+@namespace Penelopa.Web.Components.Simulation
+@using System.Globalization
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+@implements IDisposable
+
+<div class="penelopa-simulation-playhead" style="left: @(Percent())%"></div>
+
+@code {
+    private SimulationReadout? _readout;
+    private SimulationReadoutChannel? _subscribedChannel;
+    private bool _disposed;
+
+    [Parameter, EditorRequired]
+    public SimulationReadoutChannel Channel { get; set; } = null!;
+
+    [Parameter]
+    public double Duration { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        Subscribe();
+        _readout = Channel.Current ?? _readout;
+    }
+
+    private void Subscribe()
+    {
+        if (ReferenceEquals(_subscribedChannel, Channel))
+        {
+            return;
+        }
+
+        if (_subscribedChannel is not null)
+        {
+            _subscribedChannel.Updated -= HandleReadout;
+        }
+
+        _subscribedChannel = Channel;
+        if (_subscribedChannel is not null)
+        {
+            _subscribedChannel.Updated += HandleReadout;
+        }
+    }
+
+    private void HandleReadout(SimulationReadout readout)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _readout = readout;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private string Percent()
+    {
+        if (Duration <= 0d)
+        {
+            return "0";
+        }
+
+        var currentTime = Math.Clamp(_readout?.CurrentTime ?? 0d, 0d, Duration);
+        return (currentTime / Duration * 100d)
+            .ToString("0.####", CultureInfo.InvariantCulture);
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        if (_subscribedChannel is not null)
+        {
+            _subscribedChannel.Updated -= HandleReadout;
+        }
+    }
+}

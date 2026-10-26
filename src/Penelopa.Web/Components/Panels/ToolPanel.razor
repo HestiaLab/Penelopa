@@ -1,0 +1,462 @@
+@namespace Penelopa.Web.Components
+@using Atlas.Blazor.Content
+@using Penelopa.Core.Alignment
+@using Penelopa.Core.Primitives
+@using Penelopa.Core.Services
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+@inherits AtlasContentComponent
+@implements IDisposable
+
+<div class="penelopa-tools">
+    <h3>Tools</h3>
+
+    <div class="penelopa-tool-section">
+        <span class="penelopa-tool-label">Add</span>
+        <div class="penelopa-tool-actions">
+            <button type="button" class="penelopa-tool-button" @onclick="() => Add(() => new Circle())">Circle</button>
+            <button type="button" class="penelopa-tool-button" @onclick="() => Add(() => new Rectangle())">Rectangle</button>
+            <button type="button" class="penelopa-tool-button" @onclick="() => Add(() => new Triangle())">Triangle</button>
+        </div>
+        <p class="penelopa-tool-hint">Adds into the selected container when one is selected.</p>
+    </div>
+
+    <div class="penelopa-tool-section">
+        <span class="penelopa-tool-label">Container</span>
+        <div class="penelopa-tool-actions">
+            <button type="button" class="penelopa-tool-button" @onclick="AddOffsetContainer">Offset</button>
+            <button type="button" class="penelopa-tool-button" @onclick="AddRotationContainer">Rotate</button>
+            <button type="button" class="penelopa-tool-button" @onclick="AddFlipContainer">Flip</button>
+        </div>
+    </div>
+
+    <div class="penelopa-tool-section">
+        <span class="penelopa-tool-label">Document</span>
+        <div class="penelopa-tool-actions">
+            <button type="button"
+                    class="penelopa-tool-button"
+                    disabled="@(_isSaving || _isLoading || _pendingOperation == PendingOperation.SaveDormant)"
+                    @onclick="SaveDocument">Save</button>
+            <button type="button"
+                    class="penelopa-tool-button"
+                    disabled="@(_isSaving || _isLoading)"
+                    @onclick="LoadDocument">Load</button>
+        </div>
+        <p class="penelopa-tool-hint">Stores the document in this browser (localStorage).</p>
+        @if (_pendingOperation == PendingOperation.LoadConfirm && _pendingLoad is not null)
+        {
+            <div class="penelopa-tool-confirm">
+                <p class="penelopa-tool-hint">
+                    Replace the current document and simulation configuration with the saved one?
+                </p>
+                <div class="penelopa-tool-actions">
+                    <button type="button" class="penelopa-tool-button" @onclick="ConfirmLoad">Replace</button>
+                    <button type="button" class="penelopa-tool-button" @onclick="CancelLoad">Cancel</button>
+                </div>
+            </div>
+        }
+        @if (_pendingOperation == PendingOperation.SaveDormant && _pendingSave is not null)
+        {
+            <div class="penelopa-tool-confirm">
+                <p class="penelopa-tool-hint">
+                    @_pendingDormantCount simulation track(s) reference deleted primitives
+                    and will not be saved. Save the remaining document and active tracks?
+                </p>
+                <div class="penelopa-tool-actions">
+                    <button type="button"
+                            class="penelopa-tool-button"
+                            disabled="@_isSaving"
+                            @onclick="ConfirmDormantSave">Save active only</button>
+                    <button type="button"
+                            class="penelopa-tool-button"
+                            disabled="@_isSaving"
+                            @onclick="CancelDormantSave">Cancel save</button>
+                </div>
+            </div>
+        }
+        @if (_documentMessage is not null)
+        {
+            <p class="penelopa-tool-message @GetMessageClass()"
+               role="status"
+               aria-live="polite">@_documentMessage</p>
+        }
+    </div>
+
+    <div class="penelopa-tool-section">
+        <span class="penelopa-tool-label">Align</span>
+        <div class="penelopa-tool-actions">
+            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Left)">&#8592; Left</button>
+            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.HCenter)">&#8596; H-Center</button>
+            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Right)">&#8594; Right</button>
+            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Top)">&#8593; Top</button>
+            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.VCenter)">&#8597; V-Center</button>
+            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Bottom)">&#8595; Bottom</button>
+        </div>
+    </div>
+
+    <div class="penelopa-tool-section">
+        <span class="penelopa-tool-label">Selection</span>
+        <div class="penelopa-tool-actions">
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-keyshortcuts="Delete"
+                    disabled="@(!_hasSelection)"
+                    @onclick="DeleteSelection">Delete</button>
+        </div>
+        <p class="penelopa-tool-hint">Deletes the selected primitives. Undo with Ctrl+Z.</p>
+    </div>
+
+    <div class="penelopa-tool-section">
+        <span class="penelopa-tool-label">Group</span>
+        <div class="penelopa-tool-actions">
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-describedby="penelopa-group-hint"
+                    disabled="@(!_canGroup)"
+                    @onclick="GroupSelection">Group</button>
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-describedby="penelopa-group-hint"
+                    disabled="@(!_canUngroup)"
+                    @onclick="UngroupSelection">Ungroup</button>
+        </div>
+        <p class="penelopa-tool-hint" id="penelopa-group-hint">
+            Group two or more root primitives. Ungroup a root container with an identity
+            transform (offset 0, rotation 0, scale 1).
+        </p>
+        @if (_groupMessage is not null)
+        {
+            <p class="penelopa-tool-message is-error">@_groupMessage</p>
+        }
+    </div>
+</div>
+
+@code {
+    private DeserializeResult? _pendingLoad;
+    private SimulationConfig? _pendingSave;
+    private int _pendingDormantCount;
+    private PendingOperation _pendingOperation;
+    private bool _isSaving;
+    private bool _isLoading;
+    private string? _documentMessage;
+    private bool _documentError;
+    private bool _documentWarning;
+    private bool _hasSelection;
+    private bool _canGroup;
+    private bool _canUngroup;
+    private string? _groupMessage;
+
+    private enum PendingOperation
+    {
+        None,
+        SaveDormant,
+        LoadConfirm,
+    }
+
+    [Inject]
+    private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    [Inject]
+    private SimulationConfigStore SimulationConfigStore { get; set; } = null!;
+
+    [Inject]
+    private DocumentStorage DocumentStorage { get; set; } = null!;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        UpdateSelectionState(PrimitiveService.GetSelection());
+        PrimitiveService.Changed += HandleDocumentChanged;
+    }
+
+    private void HandleDocumentChanged(DocumentChange change)
+    {
+        UpdateSelectionState(change.State.Selection);
+        _groupMessage = null;
+        if (_pendingOperation == PendingOperation.SaveDormant)
+        {
+            // 确认期间文档可能变化（删除/撤销/加载前编辑）；重新计算，避免保存旧配置快照。
+            var active = SimulationConfigStore.ExportActive();
+            var dormant = SimulationConfigStore.Config.Tracks.Count - active.Tracks.Count;
+            if (dormant == 0)
+            {
+                ClearPendingOperation();
+            }
+            else
+            {
+                _pendingSave = active;
+                _pendingDormantCount = dormant;
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void UpdateSelectionState(IReadOnlyList<Primitive> selection)
+    {
+        _hasSelection = selection.Count > 0;
+        _canGroup = selection.Count >= 2 && selection.All(primitive => primitive.Parent is null);
+        _canUngroup = selection.Count == 1
+            && selection[0] is Container container
+            && container.Parent is null
+            && container.LocalTransform.IsIdentity;
+    }
+
+    private void DeleteSelection()
+    {
+        PrimitiveService.RemoveRange(PrimitiveService.GetSelection());
+    }
+
+    private void GroupSelection()
+    {
+        _ = PrimitiveService.GroupSelection(out var error);
+        _groupMessage = error;
+    }
+
+    private void UngroupSelection()
+    {
+        var selection = PrimitiveService.GetSelection();
+        if (selection.Count != 1 || selection[0] is not Container container)
+        {
+            _groupMessage = "Select one root container to ungroup.";
+            return;
+        }
+
+        _ = PrimitiveService.TryUngroup(container, out var error);
+        _groupMessage = error;
+    }
+
+    public void Dispose()
+    {
+        PrimitiveService.Changed -= HandleDocumentChanged;
+    }
+
+    private void Add(Func<Primitive> factory)
+    {
+        var primitive = factory();
+        var selection = PrimitiveService.GetSelection().ToList();
+        var container = selection.Count == 1 ? selection[0] as Container : null;
+        if (container is not null)
+        {
+            PrimitiveService.AddToContainer(container, primitive);
+        }
+        else
+        {
+            PrimitiveService.Add(primitive);
+        }
+    }
+
+    private void AddContainer(Container container)
+    {
+        PrimitiveService.Add(container);
+        PrimitiveService.SetSelected(container);
+    }
+
+    private void AddOffsetContainer()
+        => AddContainer(Container.CreateOffset("Offset Container", 20f, 20f));
+
+    private void AddRotationContainer()
+        => AddContainer(Container.CreateRotation("Rotate Container", 45f));
+
+    private void AddFlipContainer()
+        => AddContainer(Container.CreateFlip("Flip Container", flipX: true, flipY: false));
+
+    private void Align(AlignType type)
+    {
+        // 服务层事务边界统一处理对齐/通知/撤销，已对齐时不产生历史条目
+        PrimitiveService.Align(type);
+    }
+
+    private async Task SaveDocument()
+    {
+        if (_isSaving || _isLoading)
+        {
+            return;
+        }
+
+        // Save 与 Load 的确认互斥；开始新的保存即放弃未确认的加载。
+        ClearPendingOperation();
+
+        var active = SimulationConfigStore.ExportActive();
+        var dormant = SimulationConfigStore.Config.Tracks.Count - active.Tracks.Count;
+        if (dormant > 0)
+        {
+            _pendingSave = active;
+            _pendingDormantCount = dormant;
+            _pendingOperation = PendingOperation.SaveDormant;
+            SetDocumentMessage(null, error: false);
+            return;
+        }
+
+        await SaveDocumentCore(active);
+    }
+
+    private async Task ConfirmDormantSave()
+    {
+        if (_pendingOperation != PendingOperation.SaveDormant || _isSaving)
+        {
+            return;
+        }
+
+        // 绝不复用确认时的快照：文档或配置可能已变化。
+        var active = SimulationConfigStore.ExportActive();
+        var dormant = SimulationConfigStore.Config.Tracks.Count - active.Tracks.Count;
+        if (dormant > 0 && dormant != _pendingDormantCount)
+        {
+            _pendingSave = active;
+            _pendingDormantCount = dormant;
+            StateHasChanged();
+            return;
+        }
+
+        await SaveDocumentCore(active);
+    }
+
+    private void CancelDormantSave()
+    {
+        if (_isSaving)
+        {
+            return;
+        }
+
+        ClearPendingOperation();
+        SetDocumentMessage(null, error: false);
+    }
+
+    private async Task SaveDocumentCore(SimulationConfig active)
+    {
+        if (_isSaving)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        ClearPendingOperation();
+        StateHasChanged();
+        try
+        {
+            var result = await DocumentStorage.SaveAsync(
+                PrimitiveService.GetAll().ToList(),
+                PrimitiveService.GetSelection().ToList(),
+                active);
+            if (!result.Success)
+            {
+                SetDocumentMessage(
+                    result.Error ?? "The document could not be saved.",
+                    error: true);
+                return;
+            }
+
+            SetDocumentMessage("Document saved.", error: false);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    /// <summary>读取并校验文档；通过后进入确认步骤，不立即覆盖当前文档。</summary>
+    private async Task LoadDocument()
+    {
+        if (_isLoading || _isSaving)
+        {
+            return;
+        }
+
+        // 加载开始即取消未确认的 Dormant 保存，禁止旧快照跨文档存活。
+        _isLoading = true;
+        ClearPendingOperation();
+        StateHasChanged();
+        try
+        {
+            var result = await DocumentStorage.LoadAsync();
+            if (result.Document is null)
+            {
+                SetDocumentMessage(
+                    result.Error ?? "The saved document is invalid or unsupported.",
+                    error: true);
+                return;
+            }
+
+            _pendingLoad = result.Document;
+            _pendingOperation = PendingOperation.LoadConfirm;
+            SetDocumentMessage(null, error: false);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ConfirmLoad()
+    {
+        if (_pendingOperation != PendingOperation.LoadConfirm
+            || _pendingLoad is null
+            || _isLoading)
+        {
+            return;
+        }
+
+        var result = _pendingLoad;
+        ClearPendingOperation();
+
+        // Deserialize 已保证 Id 唯一；ResolveSelection 会忽略未知 Id
+        var selected = result.ResolveSelection();
+        PrimitiveService.ReplaceAll(result.Roots);
+        // 即使选区为空也显式通知，属性面板必须清空而非保留旧目标
+        PrimitiveService.SetSelectedRange(selected);
+        SimulationConfigStore.ReplaceConfig(
+            result.Simulation ?? SimulationConfig.Empty);
+
+        if (result.Warnings.Count > 0)
+        {
+            SetDocumentMessage(
+                "Document loaded. " + string.Join(" ", result.Warnings),
+                error: false,
+                warning: true);
+        }
+        else
+        {
+            SetDocumentMessage("Document loaded.", error: false);
+        }
+    }
+
+    private void CancelLoad()
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        ClearPendingOperation();
+        SetDocumentMessage(null, error: false);
+    }
+
+    private void ClearPendingOperation()
+    {
+        _pendingLoad = null;
+        _pendingSave = null;
+        _pendingDormantCount = 0;
+        _pendingOperation = PendingOperation.None;
+    }
+
+    private void SetDocumentMessage(
+        string? message,
+        bool error,
+        bool warning = false)
+    {
+        _documentMessage = message;
+        _documentError = error;
+        _documentWarning = warning;
+    }
+
+    private string GetMessageClass()
+    {
+        if (_documentError)
+        {
+            return "is-error";
+        }
+
+        return _documentWarning ? "is-warning" : string.Empty;
+    }
+}

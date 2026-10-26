@@ -1,0 +1,551 @@
+@namespace Penelopa.Web.Components.Simulation
+@using System.Globalization
+@using System.Text.Json.Serialization
+@using Microsoft.JSInterop
+@using Penelopa.Core.Primitives
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+
+<section class="penelopa-simulation-timeline-content">
+    <div class="penelopa-simulation-timeline-header">
+        <h2 class="penelopa-simulation-section-title">Timeline</h2>
+        @if (Primitive is not null && _tracks.Count > 0 && Duration > 0)
+        {
+            <div class="penelopa-simulation-zoom">
+                <button type="button"
+                        class="penelopa-tool-button"
+                        aria-label="Zoom out timeline"
+                        disabled="@(_zoom <= 1)"
+                        @onclick="ZoomOut">&#8722;</button>
+                <span class="penelopa-simulation-zoom-value">@_zoom&times;</span>
+                <button type="button"
+                        class="penelopa-tool-button"
+                        aria-label="Zoom in timeline"
+                        disabled="@(_zoom >= MaxZoom)"
+                        @onclick="ZoomIn">+</button>
+            </div>
+        }
+    </div>
+
+    @if (Primitive is null)
+    {
+        <p class="penelopa-simulation-hint">
+            Select a primitive to see its animation tracks.
+        </p>
+    }
+    else if (_tracks.Count == 0)
+    {
+        <p class="penelopa-simulation-hint">
+            No animation tracks for @Primitive.Name.Value.
+        </p>
+    }
+    else if (Duration <= 0d)
+    {
+        <p class="penelopa-simulation-hint">
+            Add a keyframe after the first one to create a playable duration.
+        </p>
+    }
+    else
+    {
+        <div class="penelopa-simulation-timeline-grid">
+            <div class="penelopa-simulation-timeline-labels" aria-hidden="true">
+                <div class="penelopa-simulation-label-spacer">Time</div>
+                @foreach (var track in _tracks)
+                {
+                    <div class="penelopa-simulation-track-label @(SelectedProperty == track.PropertyName ? "selected" : string.Empty)"
+                         title="@track.PropertyName">@track.PropertyName</div>
+                }
+            </div>
+
+            <div class="penelopa-simulation-timeline-scroll">
+                <div class="penelopa-simulation-timeline-content-inner"
+                     @ref="_trackArea"
+                     style="width: @ContentWidth; margin-inline: 0.5rem;"
+                     @onpointermove="OnPointerMove"
+                     @onpointerup="OnPointerUp"
+                     @onpointercancel="OnPointerCancel">
+                    <div class="penelopa-simulation-ruler">
+                        @foreach (var tick in _ticks)
+                        {
+                            <span class="penelopa-simulation-tick"
+                                  style="left: @(Percent(tick))%"
+                                  @onclick="() => SeekToTickAsync(tick)">@FormatTick(tick)</span>
+                        }
+                        <SimulationScrubber Channel="@Channel"
+                                            Duration="@Duration"
+                                            OnSeekRequested="@OnSeekRequested" />
+                    </div>
+
+                    @foreach (var track in _tracks)
+                    {
+                        <div class="penelopa-simulation-lane">
+                            @for (var index = 0; index < track.Keyframes.Count; index++)
+                            {
+                                var rowIndex = index;
+                                var keyframe = track.Keyframes[rowIndex];
+                                var time = IsDragged(track, rowIndex) ? _dragPreviewTime : keyframe.Time;
+                                var selected = IsSelected(track, rowIndex);
+                                <button type="button"
+                                        class="penelopa-simulation-keyframe @(selected ? "selected" : string.Empty)"
+                                        style="left: @(Percent(time))%"
+                                        aria-label="@($"{track.PropertyName} keyframe {rowIndex + 1} at {FormatTime(keyframe.Time)} seconds")"
+                                        aria-pressed="@(selected ? "true" : "false")"
+                                        @onclick="() => SelectKeyframeAsync(track, rowIndex)"
+                                        @ondblclick="() => GoToKeyframeAsync(track, rowIndex)"
+                                        @onpointerdown="e => BeginDragAsync(e, track, rowIndex)"
+                                        @onkeydown="e => OnKeyframeKeyDownAsync(e)">
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    <SimulationPlayhead Channel="@Channel" Duration="@Duration" />
+                </div>
+            </div>
+        </div>
+
+        @if (_error is not null)
+        {
+            <p class="penelopa-simulation-inline-error" role="alert">@_error</p>
+        }
+    }
+</section>
+
+@code {
+    private const int MaxZoom = 8;
+
+    private IReadOnlyList<SimulationTrack> _tracks = Array.Empty<SimulationTrack>();
+    private IReadOnlyList<double> _ticks = Array.Empty<double>();
+    private SimulationConfig? _lastConfig;
+    private Guid? _lastPrimitiveId;
+    private double _lastDuration;
+    private int _zoom = 1;
+    private ElementReference _trackArea;
+    private string? _error;
+
+    private bool _dragArmed;
+    private bool _dragging;
+    private bool _pointerCaptured;
+    private long? _dragPointerId;
+    private SimulationTrack? _dragTrack;
+    private int _dragIndex = -1;
+    private double _dragOriginalTime;
+    private double _dragPreviewTime;
+    private double _dragStartX;
+    private double _dragStartY;
+    private double _secondsPerPixel;
+
+    [Parameter]
+    public Primitive? Primitive { get; set; }
+
+    [Parameter]
+    public SimulationConfig Config { get; set; } = SimulationConfig.Empty;
+
+    [Parameter]
+    public double Duration { get; set; }
+
+    [Parameter]
+    public string? SelectedProperty { get; set; }
+
+    [Parameter]
+    public int? SelectedKeyframeIndex { get; set; }
+
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    [Parameter, EditorRequired]
+    public SimulationReadoutChannel Channel { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<SimulationKeyframeSelection> OnSelectKeyframe { get; set; }
+
+    [Parameter]
+    public EventCallback<double> OnSeekRequested { get; set; }
+
+    [Inject]
+    private SimulationConfigStore ConfigStore { get; set; } = null!;
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = null!;
+
+    private string ContentWidth
+        => $"calc({_zoom * 100}% - 1rem)";
+
+    protected override void OnParametersSet()
+    {
+        if (_lastPrimitiveId != Primitive?.Id || !ReferenceEquals(_lastConfig, Config))
+        {
+            _lastPrimitiveId = Primitive?.Id;
+            _lastConfig = Config;
+            _tracks = Primitive is null
+                ? Array.Empty<SimulationTrack>()
+                : Config.Tracks
+                    .Where(track => track.PrimitiveId == Primitive.Id)
+                    .ToArray();
+            _error = null;
+        }
+
+        if (Math.Abs(_lastDuration - Duration) > 1e-9d)
+        {
+            _lastDuration = Duration;
+            RebuildTicks();
+        }
+    }
+
+    private bool IsSelected(SimulationTrack track, int index)
+        => SelectedProperty == track.PropertyName
+            && SelectedKeyframeIndex == index;
+
+    private bool IsDragged(SimulationTrack track, int index)
+        => _dragging
+            && _dragTrack is not null
+            && ReferenceEquals(_dragTrack, track)
+            && _dragIndex == index;
+
+    private async Task SelectKeyframeAsync(SimulationTrack track, int index)
+    {
+        await OnSelectKeyframe.InvokeAsync(
+            new SimulationKeyframeSelection(track.PropertyName, index));
+    }
+
+    private async Task SeekToTickAsync(double tick)
+    {
+        await OnSeekRequested.InvokeAsync(Math.Clamp(tick, 0d, Duration));
+    }
+
+    private async Task GoToKeyframeAsync(SimulationTrack track, int index)
+    {
+        await OnSeekRequested.InvokeAsync(track.Keyframes[index].Time);
+    }
+
+    private async Task BeginDragAsync(
+        PointerEventArgs args,
+        SimulationTrack track,
+        int index)
+    {
+        if (!CanEdit || _dragArmed)
+        {
+            return;
+        }
+
+        _dragArmed = true;
+        _dragging = false;
+        _pointerCaptured = false;
+        _dragTrack = track;
+        _dragIndex = index;
+        _dragOriginalTime = track.Keyframes[index].Time;
+        _dragPreviewTime = _dragOriginalTime;
+        _dragStartX = args.ClientX;
+        _dragStartY = args.ClientY;
+        _dragPointerId = args.PointerId;
+
+        await OnSelectKeyframe.InvokeAsync(
+            new SimulationKeyframeSelection(track.PropertyName, index));
+
+        try
+        {
+            var width = await JS.InvokeAsync<ElementWidth>(
+                "penelopa.getElementRect",
+                _trackArea);
+            _secondsPerPixel = width.Width > 0d
+                ? Duration / width.Width
+                : 0d;
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _error = "Timeline drag is unavailable.";
+            ResetDrag();
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 指针捕获在真正移动后才启用：简单单击/双击不应被 lane 捕获，
+    /// 否则浏览器会把 click/dblclick 的目标改写成捕获元素。
+    /// </summary>
+    private async Task OnPointerMove(PointerEventArgs args)
+    {
+        if (!_dragArmed
+            || _dragPointerId != args.PointerId
+            || _dragTrack is null
+            || _dragIndex < 0
+            || _dragIndex >= _dragTrack.Keyframes.Count)
+        {
+            return;
+        }
+
+        if (!_dragging)
+        {
+            if (Math.Abs(args.ClientX - _dragStartX) < 3d
+                && Math.Abs(args.ClientY - _dragStartY) < 3d)
+            {
+                return;
+            }
+
+            _dragging = true;
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "penelopa.capturePointer",
+                    _trackArea,
+                    args.PointerId);
+                _pointerCaptured = true;
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                _error = "Timeline drag is unavailable.";
+                ResetDrag();
+                StateHasChanged();
+                return;
+            }
+        }
+
+        if (_secondsPerPixel <= 0d)
+        {
+            return;
+        }
+
+        var delta = (args.ClientX - _dragStartX) * _secondsPerPixel;
+        var time = Snap(_dragOriginalTime + delta);
+        var track = _dragTrack;
+        var min = _dragIndex == 0
+            ? 0d
+            : track.Keyframes[_dragIndex - 1].Time
+                + SimulationLimits.MinKeyframeGapSeconds;
+        var max = _dragIndex == track.Keyframes.Count - 1
+            ? Duration
+            : track.Keyframes[_dragIndex + 1].Time
+                - SimulationLimits.MinKeyframeGapSeconds;
+
+        _dragPreviewTime = min <= max
+            ? Math.Clamp(time, min, max)
+            : _dragOriginalTime;
+        StateHasChanged();
+    }
+
+    private async Task OnPointerUp(PointerEventArgs args)
+    {
+        if (!_dragArmed || _dragPointerId != args.PointerId)
+        {
+            return;
+        }
+
+        var track = _dragTrack;
+        var index = _dragIndex;
+        var time = _dragPreviewTime;
+        var wasDragging = _dragging;
+        var wasCaptured = _pointerCaptured;
+        ResetDrag();
+
+        if (wasCaptured)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "penelopa.releasePointer",
+                    _trackArea,
+                    args.PointerId);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // 指针已释放
+            }
+        }
+
+        if (!wasDragging)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        if (track is not null
+            && index >= 0
+            && index < track.Keyframes.Count)
+        {
+            var keyframe = track.Keyframes[index];
+            if (Math.Abs(time - keyframe.Time)
+                > SimulationLimits.SameTimeToleranceSeconds)
+            {
+                if (!ConfigStore.TryUpdateKeyframe(
+                    track.PrimitiveId,
+                    track.PropertyName,
+                    index,
+                    time,
+                    keyframe.Value,
+                    keyframe.Interpolation,
+                    keyframe.Bezier,
+                    out var error))
+                {
+                    _error = error;
+                }
+                else
+                {
+                    _error = null;
+                }
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task OnPointerCancel(PointerEventArgs args)
+    {
+        if (!_dragArmed || _dragPointerId != args.PointerId)
+        {
+            return;
+        }
+
+        var pointerId = _dragPointerId;
+        var wasCaptured = _pointerCaptured;
+        ResetDrag();
+        if (wasCaptured && pointerId is { } id)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "penelopa.releasePointer",
+                    _trackArea,
+                    id);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // 指针已释放
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task OnKeyframeKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (!_dragArmed || args.Key != "Escape")
+        {
+            return;
+        }
+
+        var pointerId = _dragPointerId;
+        var wasCaptured = _pointerCaptured;
+        ResetDrag();
+        if (wasCaptured && pointerId is { } id)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "penelopa.releasePointer",
+                    _trackArea,
+                    id);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // 指针已释放
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void ResetDrag()
+    {
+        _dragArmed = false;
+        _dragging = false;
+        _pointerCaptured = false;
+        _dragPointerId = null;
+        _dragTrack = null;
+        _dragIndex = -1;
+        _secondsPerPixel = 0d;
+        _dragPreviewTime = 0d;
+        _dragStartY = 0d;
+    }
+
+    private static double Snap(double time)
+        => Math.Round(time * 60d) / 60d;
+
+    private void ZoomIn()
+    {
+        if (_zoom >= MaxZoom)
+        {
+            return;
+        }
+
+        _zoom++;
+        RebuildTicks();
+    }
+
+    private void ZoomOut()
+    {
+        if (_zoom <= 1)
+        {
+            return;
+        }
+
+        _zoom--;
+        RebuildTicks();
+    }
+
+    private void RebuildTicks()
+        => _ticks = BuildTicks(Duration, _zoom);
+
+    private static IReadOnlyList<double> BuildTicks(double duration, int zoom)
+    {
+        if (duration <= 0d)
+        {
+            return Array.Empty<double>();
+        }
+
+        var steps = new[]
+        {
+            0.01d, 0.025d, 0.05d, 0.1d, 0.25d, 0.5d, 1d, 2d, 5d,
+            10d, 30d, 60d, 120d, 300d, 600d, 1_200d, 3_600d,
+        };
+        var target = duration / (6d * zoom);
+        var step = 3_600d;
+        foreach (var candidate in steps)
+        {
+            if (candidate >= target)
+            {
+                step = candidate;
+                break;
+            }
+        }
+
+        var ticks = new List<double>();
+        for (var time = 0d;
+             time <= duration + 1e-9d && ticks.Count < 200;
+             time += step)
+        {
+            ticks.Add(time);
+        }
+
+        if (ticks.Count == 0
+            || Math.Abs(ticks[ticks.Count - 1] - duration) > 1e-9d)
+        {
+            ticks.Add(duration);
+        }
+
+        return ticks;
+    }
+
+    private string Percent(double time)
+    {
+        if (Duration <= 0d)
+        {
+            return "0";
+        }
+
+        var percent = Math.Clamp(time, 0d, Duration) / Duration * 100d;
+        return percent.ToString("0.####", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatTick(double time)
+        => time.ToString("0.###", CultureInfo.InvariantCulture) + "s";
+
+    private static string FormatTime(double time)
+        => time.ToString("F3", CultureInfo.InvariantCulture);
+
+    private sealed class ElementWidth
+    {
+        [JsonPropertyName("width")]
+        public double Width { get; set; }
+    }
+}

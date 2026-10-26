@@ -1,0 +1,120 @@
+@namespace Penelopa.Web.Components.Simulation
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+
+<div class="penelopa-simulation-transport">
+    <button type="button"
+            class="penelopa-tool-button"
+            disabled="@PrimaryDisabled"
+            @onclick="PrimaryAsync">@PrimaryLabel</button>
+    <button type="button"
+            class="penelopa-tool-button"
+            disabled="@(!CanStop)"
+            @onclick="StopAsync">Stop</button>
+    <button type="button"
+            class="penelopa-tool-button"
+            aria-label="Step back 1/60 second"
+            disabled="@(!CanStep)"
+            @onclick="StepBackAsync">-1/60</button>
+    <button type="button"
+            class="penelopa-tool-button"
+            aria-label="Step forward 1/60 second"
+            disabled="@(!CanStep)"
+            @onclick="StepForwardAsync">+1/60</button>
+    <button type="button"
+            class="penelopa-tool-button"
+            aria-pressed="@(Loop ? "true" : "false")"
+            disabled="@(!CanLoop)"
+            @onclick="ToggleLoopAsync">Loop</button>
+    <button type="button"
+            class="penelopa-tool-button"
+            disabled="@(!CanUndo)"
+            @onclick="UndoAsync">Undo</button>
+    <button type="button"
+            class="penelopa-tool-button"
+            disabled="@(!CanRedo)"
+            @onclick="RedoAsync">Redo</button>
+    <span class="penelopa-simulation-status" aria-live="polite">@State</span>
+    <SimulationTimeReadout Channel="@Channel" />
+</div>
+
+@code {
+    [Parameter]
+    public SimulationState State { get; set; }
+
+    [Parameter]
+    public bool CanPlay { get; set; }
+
+    [Parameter]
+    public bool CanStop { get; set; }
+
+    [Parameter]
+    public bool CanLoop { get; set; }
+
+    [Parameter]
+    public bool Loop { get; set; }
+
+    [Parameter]
+    public bool CanStep { get; set; }
+
+    [Parameter]
+    public bool CanUndo { get; set; }
+
+    [Parameter]
+    public bool CanRedo { get; set; }
+
+    [Parameter, EditorRequired]
+    public SimulationReadoutChannel Channel { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback OnPlay { get; set; }
+
+    [Parameter]
+    public EventCallback OnPause { get; set; }
+
+    [Parameter]
+    public EventCallback OnStop { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleLoop { get; set; }
+
+    [Parameter]
+    public EventCallback OnStepBack { get; set; }
+
+    [Parameter]
+    public EventCallback OnStepForward { get; set; }
+
+    [Parameter]
+    public EventCallback OnUndo { get; set; }
+
+    [Parameter]
+    public EventCallback OnRedo { get; set; }
+
+    private string PrimaryLabel => State switch
+    {
+        SimulationState.Playing => "Pause",
+        SimulationState.Finished => "Replay",
+        SimulationState.Paused or SimulationState.Preview => "Resume",
+        _ => "Play",
+    };
+
+    private bool PrimaryDisabled
+        => State != SimulationState.Playing && !CanPlay;
+
+    private Task PrimaryAsync()
+        => State == SimulationState.Playing
+            ? OnPause.InvokeAsync()
+            : OnPlay.InvokeAsync();
+
+    private Task StopAsync() => OnStop.InvokeAsync();
+
+    private Task StepBackAsync() => OnStepBack.InvokeAsync();
+
+    private Task StepForwardAsync() => OnStepForward.InvokeAsync();
+
+    private Task ToggleLoopAsync() => OnToggleLoop.InvokeAsync();
+
+    private Task UndoAsync() => OnUndo.InvokeAsync();
+
+    private Task RedoAsync() => OnRedo.InvokeAsync();
+}

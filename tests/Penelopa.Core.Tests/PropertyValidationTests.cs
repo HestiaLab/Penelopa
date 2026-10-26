@@ -227,4 +227,21 @@ public class PropertyValidationTests
         var circle = Assert.IsType<Circle>(Assert.Single(result!.Roots));
         Assert.Equal(5f, circle.Radius.Value);
     }
+
+    [Fact]
+    public void FloatPropValue_ValidateValue_DoesNotWrite()
+    {
+        var property = new FloatPropValue("Radius", 5f, exclusiveMinimum: 0f);
+
+        Assert.True(property.ValidateValue(10f, out var error));
+        Assert.Null(error);
+
+        Assert.False(property.ValidateValue(0f, out error));
+        Assert.NotNull(error);
+
+        Assert.False(property.ValidateValue(float.NaN, out error));
+        Assert.NotNull(error);
+
+        Assert.Equal(5f, property.Value);
+    }
 }

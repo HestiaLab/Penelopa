@@ -1,0 +1,300 @@
+@namespace Penelopa.Web.Components
+@using Atlas.Blazor.Content
+@using Microsoft.JSInterop
+@using Penelopa.Core.Alignment
+@using Penelopa.Core.Interaction
+@using Penelopa.Core.Primitives
+@using Penelopa.Core.Services
+@using DocumentState = Penelopa.Core.Services.DocumentState
+@using Penelopa.Rendering
+@using SkiaSharp
+@using SkiaSharp.Views.Blazor
+@inherits AtlasContentComponent
+@implements IDisposable
+@implements IEditorInteractionHost
+
+<div class="penelopa-canvas-scroll">
+    <div class="penelopa-canvas"
+         @ref="_canvasElement"
+         tabindex="0"
+         role="application"
+         aria-label="Drawing canvas"
+         aria-describedby="penelopa-canvas-help">
+        <SKGLView @ref="_glView"
+                  EnableRenderLoop="false"
+                  OnPaintSurface="OnPaintSurface"
+                  style="width: 100%; height: 100%;" />
+        <button type="button"
+                class="penelopa-canvas-fit"
+                title="Fit content to viewport"
+                @onclick="FitCanvas">Fit</button>
+        <p id="penelopa-canvas-help" class="penelopa-visually-hidden">
+            Arrow keys move the selected primitives by 1 unit; hold Shift for 10 units.
+            Delete removes the selection. Escape cancels the current gesture.
+        </p>
+    </div>
+</div>
+
+@code {
+    private readonly CanvasRenderer _renderer = new();
+    private DocumentState _state = DocumentState.Empty;
+    private readonly EditorInteractionController _controller;
+    private double _dpr = 1;
+    private SKGLView? _glView;
+    private DotNetObjectReference<CanvasPanel>? _dprRef;
+    private ElementReference _canvasElement;
+    private IJSObjectReference? _pointerHandle;
+    private IJSObjectReference? _dprWatchHandle;
+    private bool _disposed;
+
+    [Inject]
+    private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = null!;
+
+    public CanvasPanel()
+    {
+        _controller = new EditorInteractionController(this);
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        // 单例服务可能在面板重建前已有文档/选区；首帧直接取快照，避免空白或陈旧选择
+        _state = PrimitiveService.GetState();
+        PrimitiveService.Changed += HandleDocumentChanged;
+    }
+
+    private void HandleDocumentChanged(DocumentChange change)
+    {
+        _state = change.State;
+        StateHasChanged();
+        RequestRender();
+    }
+
+    /// <summary>按需渲染：只有文档、选择、视口或手势变化时才请求下一帧。</summary>
+    private void RequestRender()
+    {
+        if (!_disposed)
+        {
+            _glView?.Invalidate();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // Physical-resolution rendering: keep the CSS-to-physical ratio in
+        // sync, including moves across displays with different DPI.
+        _dpr = await JS.InvokeAsync<double>("penelopa.getDpr");
+        _dprRef = DotNetObjectReference.Create(this);
+        _dprWatchHandle = await JS.InvokeAsync<IJSObjectReference>("penelopa.watchDpr", _dprRef);
+
+        // Pointer layer: capture, canvas-relative CSS coordinates,
+        // synthesized-mouse suppression, rAF-throttled moves.
+        _pointerHandle = await JS.InvokeAsync<IJSObjectReference>(
+            "penelopa.attachPointer", _canvasElement, _dprRef);
+
+        // 首帧没有持续渲染循环，由面板显式请求一次绘制
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnDevicePixelRatioChanged(double dpr)
+    {
+        _dpr = dpr;
+        StateHasChanged();
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnPointerDown(double x, double y, double button, bool ctrl, bool shift, long pointerId)
+    {
+        _renderer.SetDevicePixelRatio((float)_dpr);
+        var css = new Point((float)x, (float)y);
+        var world = _renderer.CssToWorld(css.X, css.Y);
+        var hit = _renderer.HitTestSelection(css.X, css.Y, PrimitiveService.GetSelection().ToList());
+        _controller.PointerDown(world, css, hit, ctrl);
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnPointerMove(double x, double y)
+    {
+        var css = new Point((float)x, (float)y);
+        var world = _renderer.CssToWorld(css.X, css.Y);
+        _controller.PointerMove(world, css);
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnPointerUp(double x, double y)
+    {
+        var world = _renderer.CssToWorld((float)x, (float)y);
+        _controller.PointerUp(world);
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnPointerCancel()
+    {
+        _controller.Cancel();
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnEscape()
+    {
+        _controller.Cancel();
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnUndo()
+    {
+        PrimitiveService.Undo();
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnRedo()
+    {
+        PrimitiveService.Redo();
+        RequestRender();
+    }
+
+    [JSInvokable]
+    public void OnDelete()
+    {
+        PrimitiveService.RemoveRange(PrimitiveService.GetSelection());
+    }
+
+    [JSInvokable]
+    public void OnNudge(double deltaX, double deltaY)
+    {
+        PrimitiveService.MoveSelection((float)deltaX, (float)deltaY);
+    }
+
+    [JSInvokable]
+    public void OnWheel(double x, double y, double deltaY)
+    {
+        var current = _renderer.CurrentViewTransform.Zoom;
+        float factor = deltaY < 0 ? 1.1f : 1f / 1.1f;
+        float newZoom = Math.Clamp(current * factor, 0.05f, 8f);
+        if (MathF.Abs(newZoom - current) < 1e-4f)
+        {
+            return;
+        }
+
+        _renderer.ZoomAt((float)x, (float)y, newZoom);
+        RequestRender();
+    }
+
+    private void FitCanvas()
+    {
+        _renderer.FitToContent(_state.Roots);
+        RequestRender();
+    }
+
+    private void OnPaintSurface(SKPaintGLSurfaceEventArgs e)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _renderer.Render(e.Surface.Canvas, e.Info, (float)_dpr, _state.Roots, _state.Selection);
+    }
+
+    IReadOnlyList<Primitive> IEditorInteractionHost.GetSelection()
+        => PrimitiveService.GetSelection().ToList();
+
+    bool IEditorInteractionHost.IsSelected(Primitive primitive)
+        => _state.Selection.Contains(primitive);
+
+    void IEditorInteractionHost.SetSelected(Primitive primitive)
+        => PrimitiveService.SetSelected(primitive);
+
+    void IEditorInteractionHost.AppendSelected(Primitive primitive)
+        => PrimitiveService.AppendSelected(primitive);
+
+    void IEditorInteractionHost.ToggleSelected(Primitive primitive)
+    {
+        if (_state.Selection.Contains(primitive))
+        {
+            PrimitiveService.SetSelectedRange(
+                PrimitiveService.GetSelection().Where(p => !ReferenceEquals(p, primitive)));
+        }
+        else
+        {
+            PrimitiveService.AppendSelected(primitive);
+        }
+    }
+
+    void IEditorInteractionHost.ClearSelection()
+        => PrimitiveService.ClearSelection();
+
+    void IEditorInteractionHost.BeginMutation()
+        => PrimitiveService.BeginTransaction();
+
+    void IEditorInteractionHost.CommitMutation()
+        => PrimitiveService.CommitTransaction();
+
+    void IEditorInteractionHost.CancelMutation()
+        => PrimitiveService.CancelTransaction();
+
+    void IEditorInteractionHost.PanByCss(float deltaX, float deltaY)
+    {
+        _renderer.PanBy(deltaX, deltaY);
+        RequestRender();
+    }
+
+    void IEditorInteractionHost.NotifyPrimitivesChanged(IReadOnlyList<Primitive> primitives)
+        => PrimitiveService.NotifyPrimitivesChanged(primitives);
+
+    public void Dispose()
+    {
+        _disposed = true;
+        PrimitiveService.Changed -= HandleDocumentChanged;
+        _renderer.Dispose();
+        if (_dprWatchHandle is not null || _pointerHandle is not null)
+        {
+            _ = DisposeJsHandlesAsync();
+        }
+        else
+        {
+            _dprRef?.Dispose();
+        }
+    }
+
+    /// <summary>先解绑 JS 监听，再释放 DotNet 引用，避免已释放引用被回调。</summary>
+    private async Task DisposeJsHandlesAsync()
+    {
+        try
+        {
+            // 键盘/指针监听挂在 window 上；必须先解除，再释放 .NET 引用。
+            if (_pointerHandle is not null)
+            {
+                await _pointerHandle.DisposeAsync();
+            }
+
+            if (_dprWatchHandle is not null)
+            {
+                await _dprWatchHandle.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // 页面卸载/断开时 JS 侧已不可达
+        }
+        finally
+        {
+            _dprRef?.Dispose();
+        }
+    }
+}

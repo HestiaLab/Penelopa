@@ -1,0 +1,59 @@
+@namespace Penelopa.Web.Components.Simulation
+@using Penelopa.Core.Simulation
+
+<div class="penelopa-simulation-dormant" role="status">
+    <div class="penelopa-simulation-dormant-summary">
+        <span>@Tracks.Count inactive track(s) reference deleted primitives.</span>
+        <button type="button"
+                class="penelopa-tool-button"
+                disabled="@(!CanEdit)"
+                @onclick="RemoveAllAsync">Remove inactive</button>
+    </div>
+    <details class="penelopa-simulation-dormant-details">
+        <summary>Show inactive tracks</summary>
+        <ul class="penelopa-simulation-dormant-list">
+            @foreach (var track in Tracks)
+            {
+                <li @key="track.Key">
+                    <span class="penelopa-simulation-dormant-id"
+                          title="@track.PrimitiveId">@ShortId(track.PrimitiveId)</span>
+                    <span class="penelopa-simulation-dormant-property">@track.PropertyName</span>
+                    <span class="penelopa-simulation-dormant-count">
+                        @track.Keyframes.Count keyframe(s)
+                    </span>
+                    <button type="button"
+                            class="penelopa-tool-button"
+                            aria-label="@RemoveLabel(track)"
+                            disabled="@(!CanEdit)"
+                            @onclick="() => RemoveAsync(track)">Remove</button>
+                </li>
+            }
+        </ul>
+    </details>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<SimulationTrack> Tracks { get; set; } = Array.Empty<SimulationTrack>();
+
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<SimulationTrack> OnRemove { get; set; }
+
+    [Parameter]
+    public EventCallback OnRemoveAll { get; set; }
+
+    private Task RemoveAsync(SimulationTrack track)
+        => CanEdit ? OnRemove.InvokeAsync(track) : Task.CompletedTask;
+
+    private Task RemoveAllAsync()
+        => CanEdit ? OnRemoveAll.InvokeAsync() : Task.CompletedTask;
+
+    private static string RemoveLabel(SimulationTrack track)
+        => $"Remove inactive track {track.PropertyName} for primitive {track.PrimitiveId}";
+
+    private static string ShortId(Guid id)
+        => id.ToString("N")[..8] + "…";
+}

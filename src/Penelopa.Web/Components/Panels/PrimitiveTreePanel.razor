@@ -1,0 +1,79 @@
+@namespace Penelopa.Web.Components
+@using Atlas.Blazor.Content
+@using Microsoft.AspNetCore.Components.Rendering
+@using Penelopa.Core.Primitives
+@using Penelopa.Core.Services
+@using DocumentState = Penelopa.Core.Services.DocumentState
+@inherits AtlasContentComponent
+@implements IDisposable
+
+<div class="penelopa-tree">
+    @if (_state.Roots.Count == 0)
+    {
+        <p class="penelopa-tree-empty">No primitives yet. Add one from the Tools panel.</p>
+    }
+    else
+    {
+        <ul class="penelopa-tree-list">
+            @foreach (var primitive in _state.Roots)
+            {
+                @RenderNode(primitive, 0)
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private DocumentState _state = DocumentState.Empty;
+
+    [Inject]
+    private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _state = PrimitiveService.GetState();
+        PrimitiveService.Changed += HandleDocumentChanged;
+    }
+
+    private void HandleDocumentChanged(DocumentChange change)
+    {
+        _state = change.State;
+        StateHasChanged();
+    }
+
+    private bool IsSelected(Primitive primitive)
+        => _state.Selection.Contains(primitive);
+
+    private void Select(Primitive primitive)
+    {
+        PrimitiveService.SetSelected(primitive);
+    }
+
+    private RenderFragment RenderNode(Primitive node, int depth) => __builder =>
+    {
+        <li>
+            <button type="button"
+                    class="penelopa-tree-item @(IsSelected(node) ? "selected" : "")"
+                    aria-pressed="@(IsSelected(node) ? "true" : "false")"
+                    style="padding-left: @(12 + depth * 16)px"
+                    @onclick="() => Select(node)">
+                @node.Name.Value
+            </button>
+        </li>
+        if (node is Container container && container.Children.Count > 0)
+        {
+            <ul class="penelopa-tree-children">
+                @foreach (var child in container.Children)
+                {
+                    @RenderNode(child, depth + 1)
+                }
+            </ul>
+        }
+    };
+
+    public void Dispose()
+    {
+        PrimitiveService.Changed -= HandleDocumentChanged;
+    }
+}

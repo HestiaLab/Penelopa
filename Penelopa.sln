@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa", "src\Penelopa\Penelopa.csproj", "{36C0341C-C5A1-4FAF-B675-287869FE8D79}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa.Web", "src\Penelopa.Web\Penelopa.Web.csproj", "{36C0341C-C5A1-4FAF-B675-287869FE8D79}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{24C70BF7-7AE4-405B-A785-0B5CF4E76CFD}"
 EndProject
@@ -17,7 +17,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa.Rendering", "src\P
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa.Rendering.Tests", "tests\Penelopa.Rendering.Tests\Penelopa.Rendering.Tests.csproj", "{AE35F72F-CF27-4F04-98D4-3E95E1E57630}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa.Ui.Tests", "tests\Penelopa.Ui.Tests\Penelopa.Ui.Tests.csproj", "{1D9F6242-6246-4063-8BF0-1BD89963137C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Penelopa.Web.Tests", "tests\Penelopa.Web.Tests\Penelopa.Web.Tests.csproj", "{1D9F6242-6246-4063-8BF0-1BD89963137C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

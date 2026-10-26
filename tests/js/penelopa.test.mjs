@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(
-  new URL('../../src/Penelopa/wwwroot/js/penelopa.js', import.meta.url),
+  new URL('../../src/Penelopa.Web/wwwroot/js/penelopa.js', import.meta.url),
   'utf8');
 
 function createHarness() {
@@ -41,10 +41,26 @@ function createHarness() {
     focus() { focused = true; },
     contains(target) { return target === this; },
     classList: { add() {}, remove() {} },
+    dataset: {},
   };
   const mediaQueries = [];
+  const storage = {
+    data: new Map(),
+    throwOnWrite: false,
+    getItem(key) {
+      return this.data.has(key) ? this.data.get(key) : null;
+    },
+    setItem(key, value) {
+      if (this.throwOnWrite) {
+        throw new Error(
+          'quota exceeded\nError: at Storage.setItem (http://localhost/_framework/penelopa.js:1:1)');
+      }
+      this.data.set(key, String(value));
+    },
+  };
   const window = {
     devicePixelRatio: 1,
+    localStorage: storage,
     addEventListener: addListener(windowListeners),
     removeEventListener: removeListener(windowListeners),
     matchMedia(query) {
@@ -97,7 +113,7 @@ function createHarness() {
   };
   const handle = window.penelopa.attachPointer(canvasEl, dotNetRef);
 
-  return { window, document, canvasEl, surface, rect, calls, mediaQueries, windowListeners, documentListeners, canvasListeners, handle, isFocused: () => focused };
+  return { window, document, canvasEl, surface, rect, calls, mediaQueries, windowListeners, documentListeners, canvasListeners, storage, handle, isFocused: () => focused };
 }
 
 function dispatch(map, type, event) {
@@ -322,4 +338,236 @@ test('dispose removes the wheel listener', () => {
   const handlers = harness.canvasListeners.get('wheel');
   assert.ok(!handlers || handlers.size === 0);
   assert.deepEqual(harness.calls, []);
+});
+
+function createFrameHarness({ perf = true } = {}) {
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+  const rafMap = new Map();
+  const calls = [];
+  let nextRafId = 1;
+  let focused = false;
+
+  const addListener = (map) => (type, handler) => {
+    const handlers = map.get(type) ?? new Set();
+    handlers.add(handler);
+    map.set(type, handlers);
+  };
+  const removeListener = (map) => (type, handler) => {
+    map.get(type)?.delete(handler);
+  };
+
+  const target = {
+    focus() { focused = true; },
+    getBoundingClientRect: () => ({ left: 12, width: 240 }),
+  };
+  const window = {
+    __PENELOPA_PERF__: perf,
+    matchMedia: (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' }),
+    addEventListener: addListener(windowListeners),
+    removeEventListener: removeListener(windowListeners),
+  };
+  const document = {
+    visibilityState: 'visible',
+    addEventListener: addListener(documentListeners),
+    removeEventListener: removeListener(documentListeners),
+    querySelector: (selector) => (selector === '#target' ? target : null),
+  };
+  const context = vm.createContext({
+    window,
+    document,
+    requestAnimationFrame: (callback) => {
+      const id = nextRafId++;
+      rafMap.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame: (id) => {
+      rafMap.delete(id);
+    },
+    Promise,
+    console,
+  });
+  vm.runInContext(source, context);
+
+  let failFrames = false;
+  const loopErrors = [];
+  const dotNetRef = {
+    invokeMethodAsync(name, ...args) {
+      calls.push(name);
+      if (name === 'OnSimulationFrame' && failFrames) {
+        return Promise.reject(new Error('frame boom'));
+      }
+
+      if (name === 'OnSimulationLoopError') {
+        loopErrors.push(args[0]);
+      }
+
+      return Promise.resolve(name === 'GetPaintCount' ? 7 : undefined);
+    },
+  };
+
+  return {
+    window,
+    document,
+    dotNetRef,
+    calls,
+    loopErrors,
+    setFailFrames(value) {
+      failFrames = value;
+    },
+    rafMap,
+    target,
+    isFocused: () => focused,
+    flushFrame() {
+      const entry = rafMap.entries().next().value;
+      if (!entry) {
+        return false;
+      }
+
+      rafMap.delete(entry[0]);
+      entry[1]();
+      return true;
+    },
+    dispatchVisibility() {
+      for (const handler of documentListeners.get('visibilitychange') ?? []) {
+        handler();
+      }
+    },
+    dispatchWindowKey(event) {
+      for (const handler of windowListeners.get('keydown') ?? []) {
+        handler(event);
+      }
+    },
+  };
+}
+
+test('simulation frame loop invokes .NET per frame and stops on dispose', async () => {
+  const harness = createFrameHarness();
+  const handle = harness.window.penelopa.startSimulationLoop(harness.dotNetRef);
+
+  assert.equal(harness.flushFrame(), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(harness.calls, ['OnSimulationFrame']);
+  assert.equal(harness.window.penelopa.getSimulationTickCount(), 1);
+
+  handle.dispose();
+  assert.equal(harness.rafMap.size, 0);
+});
+
+test('simulation performance counters are absent without the perf flag', () => {
+  const harness = createFrameHarness({ perf: false });
+
+  assert.equal(harness.window.penelopa.getSimulationTickCount, undefined);
+  assert.equal(harness.window.penelopa.getSimulationPaintCount, undefined);
+  assert.equal(harness.window.penelopa.getSimulationFrameCount, undefined);
+});
+
+test('simulation frame loop reports unexpected errors through the dotnet callback', async () => {
+  const harness = createFrameHarness();
+  harness.setFailFrames(true);
+  const handle = harness.window.penelopa.startSimulationLoop(harness.dotNetRef);
+
+  harness.flushFrame();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(harness.loopErrors.length, 1);
+  assert.match(harness.loopErrors[0], /frame boom/);
+  handle.dispose();
+});
+
+test('getSimulationPaintCount reads the active loop and resets after dispose', async () => {
+  const harness = createFrameHarness();
+  assert.equal(await harness.window.penelopa.getSimulationPaintCount(), 0);
+
+  const handle = harness.window.penelopa.startSimulationLoop(harness.dotNetRef);
+  assert.equal(await harness.window.penelopa.getSimulationPaintCount(), 7);
+
+  handle.dispose();
+  assert.equal(await harness.window.penelopa.getSimulationPaintCount(), 0);
+});
+
+test('simulation frame loop pauses and notifies when the document hides', async () => {
+  const harness = createFrameHarness();
+  const handle = harness.window.penelopa.startSimulationLoop(harness.dotNetRef);
+
+  harness.flushFrame();
+  await new Promise((resolve) => setImmediate(resolve));
+  harness.document.visibilityState = 'hidden';
+  harness.dispatchVisibility();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(harness.calls, ['OnSimulationFrame', 'OnSimulationHidden']);
+  assert.equal(harness.rafMap.size, 0);
+  handle.dispose();
+});
+
+test('getElementRect returns the current width', () => {
+  const harness = createFrameHarness();
+
+  const rect = harness.window.penelopa.getElementRect(harness.target);
+
+  assert.equal(rect.width, 240);
+});
+
+test('prefersReducedMotion reflects the media query', () => {
+  const harness = createFrameHarness();
+
+  assert.equal(harness.window.penelopa.prefersReducedMotion(), true);
+});
+
+test('simulation keyboard undo/redo ignores text inputs and disposes', () => {
+  const harness = createFrameHarness();
+  const handle = harness.window.penelopa.attachSimulationKeyboard(harness.dotNetRef);
+
+  harness.dispatchWindowKey(keyEvent('z', { tagName: 'DIV', isContentEditable: false }, true));
+  harness.dispatchWindowKey(keyEvent('z', { tagName: 'INPUT', isContentEditable: false }, true));
+  harness.dispatchWindowKey(
+    keyEvent('z', { tagName: 'DIV', isContentEditable: false }, true, true));
+
+  assert.deepEqual(harness.calls, ['OnConfigUndo', 'OnConfigRedo']);
+
+  handle.dispose();
+  harness.dispatchWindowKey(keyEvent('z', { tagName: 'DIV', isContentEditable: false }, true));
+  assert.deepEqual(harness.calls, ['OnConfigUndo', 'OnConfigRedo']);
+});
+
+test('pointer capture helpers call the element methods', () => {
+  const harness = createFrameHarness();
+  const captured = [];
+  const element = {
+    setPointerCapture(id) { captured.push(['capture', id]); },
+    releasePointerCapture(id) { captured.push(['release', id]); },
+  };
+
+  harness.window.penelopa.capturePointer(element, 7);
+  harness.window.penelopa.releasePointer(element, 7);
+
+  assert.deepEqual(captured, [['capture', 7], ['release', 7]]);
+});
+
+test('storage helpers return results instead of throwing', () => {
+  const harness = createHarness();
+  harness.storage.data.set('penelopa.document', '{"Version":2}');
+
+  const existing = harness.window.penelopa.readStorage('penelopa.document');
+  assert.equal(existing.ok, true);
+  assert.equal(existing.value, '{"Version":2}');
+  assert.equal(existing.error, null);
+
+  const missing = harness.window.penelopa.readStorage('missing');
+  assert.equal(missing.ok, true);
+  assert.equal(missing.value, null);
+  assert.equal(missing.error, null);
+
+  const written = harness.window.penelopa.writeStorage('penelopa.document', 'next');
+  assert.equal(written.ok, true);
+  assert.equal(written.error, null);
+  assert.equal(harness.storage.data.get('penelopa.document'), 'next');
+
+  harness.storage.throwOnWrite = true;
+  const failed = harness.window.penelopa.writeStorage('penelopa.document', 'next');
+  assert.equal(failed.ok, false);
+  assert.match(failed.error, /quota exceeded/);
+  assert.doesNotMatch(failed.error, / at /);
+  assert.equal(harness.storage.data.get('penelopa.document'), 'next');
 });

@@ -194,6 +194,32 @@ public class CanvasRendererTests
     }
 
     [Fact]
+    public void Render_WithoutHitBuffer_StillDrawsVisibleContent()
+    {
+        using var renderer = new CanvasRenderer();
+        var circle = new Circle
+        {
+            CenterX = { Value = 20f },
+            CenterY = { Value = 20f },
+            Radius = { Value = 10f },
+        };
+        using var bitmap = new SKBitmap(new SKImageInfo(CanvasSize, CanvasSize));
+        using var canvas = new SKCanvas(bitmap);
+
+        renderer.Render(
+            canvas,
+            NewInfo(),
+            1f,
+            new Primitive[] { circle },
+            renderHitBuffer: false);
+
+        Assert.Null(renderer.HitTest(Center + 20f, Center - 20f));
+        Assert.Equal(
+            0xFFFFFFFFu,
+            (uint)bitmap.GetPixel((int)Center + 20, (int)Center - 20));
+    }
+
+    [Fact]
     public void Dispose_CanBeCalledTwice()
     {
         var renderer = new CanvasRenderer();
