@@ -363,8 +363,14 @@ The `/simulation` page (`Pages/SimulationPage.razor`) shares the singleton
 `IPrimitiveService` and `SimulationConfigStore` with the editor but keeps its
 own local selection. Its canvas is read-only: no hit testing, drag, resize or
 selection overlay, and the visual surface is exposed as `role="img"` while the
-Fit button remains an ordinary button. The layout is a fixed three-column body
-(primitive tree, canvas, inspector) with a transport bar and a global timeline.
+Fit button remains an ordinary button. The page hosts its own
+`penelopa-simulation` Atlas workspace: the transport and page notices occupy
+the fixed top slot, while the work area contains a protected primitives tool
+group, a canvas document and a protected inspector tool group over a full-width
+timeline tool group. The required regions cannot be closed or auto-hidden; tool
+groups can be resized, collapsed, moved and regrouped, and the canvas document
+can be resized and moved but not closed or split. The layout definition lives
+in `Components/Simulation/SimulationWorkspaceDefinition.cs`.
 
 `SimulationRuntime` is a deterministic preview session. On the first Play /
 seek / step it captures every Float property's base value, resolves tracks into
@@ -474,10 +480,16 @@ test records that Atlas 0.3.0 does not clamp the initial proportional tracks to
 the 160px minimum; if an Atlas upgrade starts clamping them, that test and this
 section must be revisited.
 
-The simulation page is a fixed three-column layout with a bottom timeline.
-Its columns narrow at 1024px and 820px; the timeline scrolls horizontally when
-zoomed and vertically when many tracks are present. It reuses the
-`--penelopa-*` theme tokens.
+The simulation page uses an Atlas workspace
+(`Components/Simulation/SimulationWorkspaceDefinition.cs`) with a 220px tree,
+a flexible canvas, a 320px inspector and a 208px full-width timeline by
+default. Atlas toolbars are collapsed to keep a single custom top strip; the
+splitter controls collapse the tree, inspector and timeline, and a scoped CSS
+rule keeps their expand chevrons visible after collapse because Atlas 0.3.0
+hides the splitter with the collapsed child. The canvas is a document group
+and cannot be collapsed. Layout is rebuilt on every entry and is not persisted.
+The timeline scrolls horizontally when zoomed and vertically when many tracks
+are present. The page reuses the `--penelopa-*` theme tokens.
 
 ## Extending primitives and properties
 
@@ -494,9 +506,10 @@ visitor is a larger refactor and was intentionally not added in Phase C.
 Atlas workspaces are sized by their parent; the editor shell must chain
 `html/body/#app/.penelopa-main/.penelopa-shell/.atlas-v2-workspace` to 100%
 height (see `wwwroot/css/app.css`). The top toolbar and status bar render
-inside the Atlas host, above and below the work area. The simulation page
-chains `.penelopa-simulation` through `html/body/#app/.penelopa-main` and uses
-its own header/body/timeline flex column (see `wwwroot/css/simulation.css`).
+inside the Atlas host, above and below the work area. The simulation page adds
+`.penelopa-simulation` to the same 100% chain; its Atlas host fills the page,
+and the top transport/notice strip is rendered in the host's fixed top slot
+(see `wwwroot/css/simulation.css`).
 
 ## Alignment Semantics
 

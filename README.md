@@ -36,6 +36,10 @@ Six-region dockable workspace: SkiaSharp drawing canvas, primitive tree, alignme
   removes the selection, Escape cancels a gesture
 - Dedicated `/simulation` page with a read-only canvas, local primitive tree,
   keyframe inspector, and a global timeline limited to the selected widget
+- The simulation page hosts its own Atlas workspace: protected primitives,
+  canvas, inspector and timeline regions; tool panels resize, collapse and
+  dock, the canvas document cannot be closed or split, and the default layout
+  is rebuilt on every entry
 - Per-property Float keyframe tracks with linear/ease/step/cubic-bezier
   interpolation, scrubbing, 1/60s stepping, global loop, and 60 FPS playback
   (measured from SKGLView paint callbacks)
@@ -153,6 +157,7 @@ python3 scripts/check-coverage.py
 | [ADR 0003](docs/adr/0003-selection-model.md)             | Selection normalization and multi-selection editing                  |
 | [ADR 0004](docs/adr/0004-grouping-deferred.md)           | Grouping and ungrouping existing primitives                          |
 | [ADR 0005](docs/adr/0005-simulation-keyframe-timeline.md) | Simulation keyframe timeline, preview isolation and persistence      |
+| [ADR 0006](docs/adr/0006-simulation-atlas-workspace.md)  | Simulation Atlas workspace, protected regions and layout reset       |
 
 The GitHub Pages workflow is manual (`workflow_dispatch`); publishing is an
 explicit release action.

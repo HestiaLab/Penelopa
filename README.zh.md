@@ -31,6 +31,9 @@ Penelopa 在六区域可停靠工作区中承载 SkiaSharp 绘制画布、图元
   Escape 取消手势
 - 独立 `/simulation` 页面：只读画布、本地图元树、关键帧检视器，以及仅展示
   所选图元轨道的全局时间轴
+- 仿真页使用独立 Atlas 工作区：图元树、画布、检视器与时间轴为受保护区域；
+  工具面板可调整大小、折叠与停靠，画布文档不可关闭或分割；每次进入页面
+  重建默认布局
 - 每个 Float 属性一条关键帧轨道，支持线性/缓动/阶跃/cubic-bezier 插值、
   拖动定位、1/60s 步进、全局循环与 60FPS 播放
 - 仿真只做预览，停止/离开（含浏览器后退）精确恢复基础值；Save 仅在 Ready
@@ -140,6 +143,7 @@ NuGet 依赖的已知漏洞。本地普通 `dotnet restore` 可能更新锁文�
 | [ADR 0003](docs/adr/0003-selection-model.md)             | 选择规范化与多选编辑                          |
 | [ADR 0004](docs/adr/0004-grouping-deferred.md)           | 分组与取消分组现有图元                           |
 | [ADR 0005](docs/adr/0005-simulation-keyframe-timeline.md) | 关键帧仿真时间轴、预览隔离与持久化                  |
+| [ADR 0006](docs/adr/0006-simulation-atlas-workspace.md)  | 仿真 Atlas 工作区、受保护区域与布局重置            |
 
 GitHub Pages 部署工作流保持手动触发（`workflow_dispatch`），发布是显式操作。
 
