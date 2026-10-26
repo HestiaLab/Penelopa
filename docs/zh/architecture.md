@@ -395,5 +395,7 @@ Top/Bottom 使用 MaxY/MinY 是因为画布做了 y-flip（屏幕 y 向下增长
   这是已接受、仅测试环境的风险，无生产暴露，并记录为 S-01 测试栈迁移的
   前置项。高危的 `Microsoft.Extensions.Caching.Memory` 已通过固定 6.0.2 修复。
 - GitHub Pages 部署保持 `workflow_dispatch` 手动触发，发布是显式操作，
-  不会随每次 `main` 合并自动上线。
+  不会随每次 `main` 合并自动上线。发布产物把 `<base href>` 改写为
+  `/Penelopa/`，并生成入口页的 `404.html` 副本，使 `/Penelopa/simulation`
+  等项目站深链接进入 Blazor 路由而不是 GitHub Pages 404。
 - 按需渲染后，`PERF=1` 的 Playwright 周期基准实测：空文档空闲主线程 CPU 约 0.03%、500 矩形空闲约 0.02%（headless Chromium，Debug 开发服务器）；原审查中的持续渲染空文档空闲约 28%。基准位于 `tests/e2e/tests/perf.spec.ts` 与 `tests/e2e/tests/simulation-perf.spec.ts`，未设置 `PERF=1` 时跳过。

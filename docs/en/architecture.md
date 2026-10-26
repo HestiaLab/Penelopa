@@ -568,6 +568,9 @@ two items returns false without moving.
   6.0.2.
 - GitHub Pages deployment remains `workflow_dispatch` only, so publishing is
   an explicit release action and cannot silently ship every `main` commit.
+  The published copy rewrites `<base href>` to `/Penelopa/` and emits a
+  `404.html` copy of the entry page, so project-site deep links such as
+  `/Penelopa/simulation` boot the Blazor router instead of a Pages 404.
 - With on-demand rendering, the periodic `PERF=1` Playwright benchmark
   measures ~0.03% idle main-thread CPU for an empty document and ~0.02% for
   500 rectangles (headless Chromium, Debug dev server); the former continuous
