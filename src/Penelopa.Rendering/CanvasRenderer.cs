@@ -40,13 +40,15 @@ public sealed class CanvasRenderer : IDisposable
     /// <param name="primitives">要绘制的图元。</param>
     /// <param name="selection">当前选区；非空时在最上层绘制选区框（单项时含角柄）。</param>
     /// <param name="renderHitBuffer">是否重建命中缓冲区；仿真页的只读渲染传 false。</param>
+    /// <param name="drawAxes">是否绘制坐标轴；仿真页的成品预览传 false。</param>
     public void Render(
         SKCanvas canvas,
         SKImageInfo info,
         float devicePixelRatio,
         IReadOnlyList<Primitive> primitives,
         IReadOnlyList<Primitive>? selection = null,
-        bool renderHitBuffer = true)
+        bool renderHitBuffer = true,
+        bool drawAxes = true)
     {
         EnsureBuffersFor(info.Width, info.Height, devicePixelRatio);
         canvas.Clear(SKColors.Black);
@@ -61,7 +63,8 @@ public sealed class CanvasRenderer : IDisposable
             renderHitBuffer ? _hitCanvas : null,
             _viewport.Current,
             primitives,
-            renderHitBuffer ? _hitBuffer : null);
+            renderHitBuffer ? _hitBuffer : null,
+            drawAxes);
         canvas.DrawBitmap(_drawBitmap, 0, 0);
 
         if (selection is { Count: > 0 })

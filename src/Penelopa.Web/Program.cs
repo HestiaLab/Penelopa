@@ -21,5 +21,7 @@ builder.Services.AddSingleton<IPrimitiveService, PrimitiveService>();
 // 仿真配置跨编辑页/仿真页保留；localStorage 保存边界由两个页面共享
 builder.Services.AddSingleton<SimulationConfigStore>();
 builder.Services.AddSingleton<DocumentStorage>();
+builder.Services.AddSingleton<DocumentImportRollbackService>();
+builder.Services.AddScoped<DocumentFileService>();
 
 await builder.Build().RunAsync();

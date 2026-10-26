@@ -1,5 +1,7 @@
 @namespace Penelopa.Web.Components
 @using Atlas.Blazor.Content
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @using Penelopa.Core.Alignment
 @using Penelopa.Core.Primitives
 @using Penelopa.Core.Services
@@ -35,14 +37,54 @@
         <div class="penelopa-tool-actions">
             <button type="button"
                     class="penelopa-tool-button"
-                    disabled="@(_isSaving || _isLoading || _pendingOperation == PendingOperation.SaveDormant)"
+                    disabled="@(_isSaving || _isLoading || _isImporting || _isExporting || _pendingOperation == PendingOperation.SaveDormant)"
                     @onclick="SaveDocument">Save</button>
             <button type="button"
                     class="penelopa-tool-button"
-                    disabled="@(_isSaving || _isLoading)"
+                    disabled="@(_isSaving || _isLoading || _isImporting || _isExporting)"
                     @onclick="LoadDocument">Load</button>
+            <label class="penelopa-tool-button penelopa-file-button">
+                @(_isImporting ? "Importing…" : "Import file…")
+                <InputFile accept=".json,application/json"
+                           disabled="@(_isSaving || _isLoading || _isImporting || _isExporting)"
+                           OnChange="OnImportFileSelected"
+                           aria-label="Import document file"
+                           aria-describedby="penelopa-document-file-hint" />
+            </label>
+            <button type="button"
+                    class="penelopa-tool-button"
+                    disabled="@(!_hasPrimitives || _isSaving || _isLoading || _isImporting || _isExporting)"
+                    @onclick="ExportDocumentAsync">@(_isExporting ? "Exporting…" : "Export file…")</button>
         </div>
-        <p class="penelopa-tool-hint">Stores the document in this browser (localStorage).</p>
+        <p class="penelopa-tool-hint" id="penelopa-document-file-hint">
+            Save/Load use this browser. Import/Export use a .penelopa.json file.
+        </p>
+        @if (_pendingOperation == PendingOperation.ImportConfirm && _pendingImport?.Document is not null)
+        {
+            <div class="penelopa-tool-confirm" role="group" aria-label="Import confirmation">
+                <p class="penelopa-tool-hint">
+                    Replace the current document and simulation configuration with
+                    <strong>@_pendingImport.FileName</strong>? You can undo this import
+                    until you edit the document or animation, or save.
+                </p>
+                <p class="penelopa-tool-hint">
+                    @PendingImportPrimitiveCount primitive(s), @PendingImportTrackCount active track(s).
+                </p>
+                @if (_pendingImport.Document.Warnings.Count > 0)
+                {
+                    <ul class="penelopa-tool-warning-list">
+                        @foreach (var warning in _pendingImport.Document.Warnings)
+                        {
+                            <li>@warning</li>
+                        }
+                    </ul>
+                }
+                <div class="penelopa-tool-actions">
+                    <button type="button" class="penelopa-tool-button" @onclick="ConfirmImport">Replace document</button>
+                    <button type="button" class="penelopa-tool-button" @onclick="CancelImport">Cancel import</button>
+                </div>
+            </div>
+        }
         @if (_pendingOperation == PendingOperation.LoadConfirm && _pendingLoad is not null)
         {
             <div class="penelopa-tool-confirm">
@@ -71,6 +113,42 @@
                             class="penelopa-tool-button"
                             disabled="@_isSaving"
                             @onclick="CancelDormantSave">Cancel save</button>
+                </div>
+            </div>
+        }
+        @if (_pendingOperation == PendingOperation.ExportDormant)
+        {
+            <div class="penelopa-tool-confirm">
+                <p class="penelopa-tool-hint">
+                    @_pendingDormantCount simulation track(s) reference deleted primitives
+                    and will not be exported. Export the remaining document and active tracks?
+                </p>
+                <div class="penelopa-tool-actions">
+                    <button type="button"
+                            class="penelopa-tool-button"
+                            disabled="@_isExporting"
+                            @onclick="ConfirmDormantExportAsync">Export active only</button>
+                    <button type="button"
+                            class="penelopa-tool-button"
+                            disabled="@_isExporting"
+                            @onclick="CancelDormantExport">Cancel export</button>
+                </div>
+            </div>
+        }
+        @if (ImportRollback.CanUndo)
+        {
+            <div class="penelopa-tool-confirm penelopa-import-undo"
+                 role="group"
+                 aria-label="Import rollback">
+                <p class="penelopa-tool-hint" role="status">
+                    Imported <strong>@ImportRollback.ImportedFileName</strong>. Undo import
+                    restores the previous document, selection, and both undo histories.
+                </p>
+                <div class="penelopa-tool-actions">
+                    <button type="button"
+                            class="penelopa-tool-button"
+                            disabled="@(!CanUndoImport)"
+                            @onclick="UndoImport">Undo import</button>
                 </div>
             </div>
         }
@@ -133,24 +211,46 @@
 
 @code {
     private DeserializeResult? _pendingLoad;
+    private DocumentFileLoadResult? _pendingImport;
     private SimulationConfig? _pendingSave;
     private int _pendingDormantCount;
     private PendingOperation _pendingOperation;
     private bool _isSaving;
     private bool _isLoading;
+    private bool _isImporting;
+    private bool _isExporting;
     private string? _documentMessage;
     private bool _documentError;
     private bool _documentWarning;
     private bool _hasSelection;
+    private bool _hasPrimitives;
     private bool _canGroup;
     private bool _canUngroup;
     private string? _groupMessage;
+
+    private int PendingImportPrimitiveCount
+        => _pendingImport?.Document is { } document
+            ? DocumentFileService.CountPrimitives(document.Roots)
+            : 0;
+
+    private int PendingImportTrackCount
+        => _pendingImport?.Document?.Simulation?.Tracks.Count ?? 0;
+
+    private bool CanUndoImport
+        => ImportRollback.CanUndo
+            && !_isSaving
+            && !_isLoading
+            && !_isImporting
+            && !_isExporting
+            && _pendingOperation == PendingOperation.None;
 
     private enum PendingOperation
     {
         None,
         SaveDormant,
         LoadConfirm,
+        ImportConfirm,
+        ExportDormant,
     }
 
     [Inject]
@@ -162,15 +262,38 @@
     [Inject]
     private DocumentStorage DocumentStorage { get; set; } = null!;
 
+    [Inject]
+    private DocumentFileService DocumentFiles { get; set; } = null!;
+
+    [Inject]
+    private DocumentImportRollbackService ImportRollback { get; set; } = null!;
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = null!;
+
     protected override void OnInitialized()
     {
         base.OnInitialized();
         UpdateSelectionState(PrimitiveService.GetSelection());
         PrimitiveService.Changed += HandleDocumentChanged;
+        SimulationConfigStore.Changed += HandleSimulationConfigChanged;
+        ImportRollback.Changed += HandleImportRollbackChanged;
     }
 
     private void HandleDocumentChanged(DocumentChange change)
     {
+        var contentChanged = (change.Kind
+            & (DocumentChangeKind.Structure | DocumentChangeKind.Geometry)) != 0;
+        if (contentChanged
+            && _pendingOperation is (PendingOperation.ImportConfirm or PendingOperation.ExportDormant))
+        {
+            var canceled = _pendingOperation == PendingOperation.ImportConfirm
+                ? "Import canceled because the document changed. Select the file again."
+                : "Export canceled because the document changed. Try again.";
+            ClearPendingOperation();
+            SetDocumentMessage(canceled, error: false, warning: true);
+        }
+
         UpdateSelectionState(change.State.Selection);
         _groupMessage = null;
         if (_pendingOperation == PendingOperation.SaveDormant)
@@ -192,9 +315,29 @@
         StateHasChanged();
     }
 
+    /// <summary>
+    /// 配置变更也意味着待确认的导入/导出不再对应同一状态；选中项和播放不受影响，
+    /// 因此只在持久配置变化时取消。
+    /// </summary>
+    private void HandleSimulationConfigChanged()
+    {
+        if (_pendingOperation is not (PendingOperation.ImportConfirm or PendingOperation.ExportDormant))
+        {
+            return;
+        }
+
+        var canceled = _pendingOperation == PendingOperation.ImportConfirm
+            ? "Import canceled because the simulation configuration changed. Select the file again."
+            : "Export canceled because the simulation configuration changed. Try again.";
+        ClearPendingOperation();
+        SetDocumentMessage(canceled, error: false, warning: true);
+        StateHasChanged();
+    }
+
     private void UpdateSelectionState(IReadOnlyList<Primitive> selection)
     {
         _hasSelection = selection.Count > 0;
+        _hasPrimitives = PrimitiveService.GetAll().Count > 0;
         _canGroup = selection.Count >= 2 && selection.All(primitive => primitive.Parent is null);
         _canUngroup = selection.Count == 1
             && selection[0] is Container container
@@ -226,9 +369,14 @@
         _groupMessage = error;
     }
 
+    private void HandleImportRollbackChanged()
+        => StateHasChanged();
+
     public void Dispose()
     {
         PrimitiveService.Changed -= HandleDocumentChanged;
+        SimulationConfigStore.Changed -= HandleSimulationConfigChanged;
+        ImportRollback.Changed -= HandleImportRollbackChanged;
     }
 
     private void Add(Func<Primitive> factory)
@@ -269,7 +417,7 @@
 
     private async Task SaveDocument()
     {
-        if (_isSaving || _isLoading)
+        if (_isSaving || _isLoading || _isImporting || _isExporting)
         {
             return;
         }
@@ -358,7 +506,7 @@
     /// <summary>读取并校验文档；通过后进入确认步骤，不立即覆盖当前文档。</summary>
     private async Task LoadDocument()
     {
-        if (_isLoading || _isSaving)
+        if (_isLoading || _isSaving || _isImporting || _isExporting)
         {
             return;
         }
@@ -432,9 +580,221 @@
         SetDocumentMessage(null, error: false);
     }
 
+    private async Task OnImportFileSelected(InputFileChangeEventArgs args)
+    {
+        if (_isSaving || _isLoading || _isImporting || _isExporting)
+        {
+            return;
+        }
+
+        ClearPendingOperation();
+        SetDocumentMessage(null, error: false);
+
+        if (args.FileCount == 0)
+        {
+            return;
+        }
+
+        if (args.FileCount != 1)
+        {
+            SetDocumentMessage("Choose one file at a time.", error: true);
+            return;
+        }
+
+        _isImporting = true;
+        StateHasChanged();
+        try
+        {
+            var result = await DocumentFiles.ReadAsync(args.File);
+            if (!result.Success)
+            {
+                SetDocumentMessage(
+                    result.Error ?? "The selected file is not a valid Penelopa document.",
+                    error: true);
+                return;
+            }
+
+            _pendingImport = result;
+            _pendingOperation = PendingOperation.ImportConfirm;
+        }
+        catch (Exception ex)
+        {
+            // 文件流来自浏览器互操作；边界处只暴露可操作的一行错误。
+            Console.Error.WriteLine($"[Penelopa] ToolPanel import failed: {ex}");
+            SetDocumentMessage("The file could not be read.", error: true);
+        }
+        finally
+        {
+            _isImporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ConfirmImport()
+    {
+        if (_pendingOperation != PendingOperation.ImportConfirm
+            || _pendingImport?.Document is not { } document
+            || _isImporting)
+        {
+            return;
+        }
+
+        var pending = _pendingImport;
+        ClearPendingOperation();
+        if (!ImportRollback.TryApplyImport(
+            pending.FileName,
+            () => DocumentFiles.Apply(document),
+            out var error))
+        {
+            SetDocumentMessage(error ?? "The document could not be imported.", error: true);
+            return;
+        }
+
+        if (document.Warnings.Count > 0)
+        {
+            SetDocumentMessage(
+                "Imported with warnings: " + string.Join(" ", document.Warnings),
+                error: false,
+                warning: true);
+        }
+        else
+        {
+            SetDocumentMessage(null, error: false);
+        }
+    }
+
+    private void CancelImport()
+    {
+        if (_isImporting)
+        {
+            return;
+        }
+
+        ClearPendingOperation();
+        SetDocumentMessage("Import canceled.", error: false);
+    }
+
+    private void UndoImport()
+    {
+        if (!CanUndoImport)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!ImportRollback.UndoImport())
+            {
+                SetDocumentMessage("There is no import to undo.", error: true);
+                return;
+            }
+
+            SetDocumentMessage("Import undone.", error: false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Penelopa] ToolPanel import undo failed: {ex}");
+            SetDocumentMessage("The import could not be undone.", error: true);
+        }
+    }
+
+    private async Task ExportDocumentAsync()
+    {
+        if (_isSaving || _isLoading || _isImporting || _isExporting)
+        {
+            return;
+        }
+
+        ClearPendingOperation();
+        SetDocumentMessage(null, error: false);
+        var dormant = CountDormantTracks();
+        if (dormant > 0)
+        {
+            _pendingDormantCount = dormant;
+            _pendingOperation = PendingOperation.ExportDormant;
+            StateHasChanged();
+            return;
+        }
+
+        await ExportDocumentCoreAsync();
+    }
+
+    private async Task ConfirmDormantExportAsync()
+    {
+        if (_pendingOperation != PendingOperation.ExportDormant || _isExporting)
+        {
+            return;
+        }
+
+        var dormant = CountDormantTracks();
+        if (dormant > 0 && dormant != _pendingDormantCount)
+        {
+            _pendingDormantCount = dormant;
+            StateHasChanged();
+            return;
+        }
+
+        await ExportDocumentCoreAsync();
+    }
+
+    private void CancelDormantExport()
+    {
+        if (_isExporting)
+        {
+            return;
+        }
+
+        ClearPendingOperation();
+        SetDocumentMessage(null, error: false);
+    }
+
+    private async Task ExportDocumentCoreAsync()
+    {
+        if (_isExporting)
+        {
+            return;
+        }
+
+        var dormant = CountDormantTracks();
+        _isExporting = true;
+        ClearPendingOperation();
+        StateHasChanged();
+        try
+        {
+            var payload = DocumentFiles.CreateExport();
+            await JS.InvokeVoidAsync(
+                "penelopa.downloadTextFile",
+                payload.FileName,
+                payload.Json);
+            SetDocumentMessage(
+                dormant > 0
+                    ? $"Document exported; {dormant} inactive track(s) were excluded."
+                    : "Document exported.",
+                error: false,
+                warning: dormant > 0);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Penelopa] ToolPanel export failed: {ex}");
+            SetDocumentMessage("The document could not be exported.", error: true);
+        }
+        finally
+        {
+            _isExporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private int CountDormantTracks()
+    {
+        var active = SimulationConfigStore.ExportActive();
+        return SimulationConfigStore.Config.Tracks.Count - active.Tracks.Count;
+    }
+
     private void ClearPendingOperation()
     {
         _pendingLoad = null;
+        _pendingImport = null;
         _pendingSave = null;
         _pendingDormantCount = 0;
         _pendingOperation = PendingOperation.None;

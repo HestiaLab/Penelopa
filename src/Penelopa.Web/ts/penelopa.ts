@@ -52,10 +52,15 @@ interface StorageWriteResult {
     error: string | null;
 }
 
+interface DropZoneHandle {
+    dispose(): void;
+}
+
 interface PenelopaNamespace {
     getDpr(): number;
     watchDpr(dotNetRef: DotNetRef): DprWatchHandle;
     attachPointer(canvasEl: HTMLElement, dotNetRef: DotNetRef): PointerLayerHandle;
+    attachFileDrop(rootEl: HTMLElement): DropZoneHandle;
     startSimulationLoop(dotNetRef: DotNetRef): FrameLoopHandle;
     attachSimulationKeyboard(dotNetRef: DotNetRef): KeyboardHandle;
     getElementRect(element: HTMLElement): ElementRect;
@@ -64,6 +69,7 @@ interface PenelopaNamespace {
     prefersReducedMotion(): boolean;
     readStorage(key: string): StorageReadResult;
     writeStorage(key: string, value: string): StorageWriteResult;
+    downloadTextFile(fileName: string, content: string): void;
 }
 
 // 性能基准专用接口；只有页面加载前设置 __PENELOPA_PERF__ 时才挂到
@@ -125,6 +131,184 @@ window.penelopa.writeStorage = function (key: string, value: string): StorageWri
         console.error('[Penelopa] localStorage write failed', error);
         return { ok: false, error: describeStorageError(error) };
     }
+};
+
+// 通过临时 Blob URL 触发浏览器下载；不经过服务器，文件内容不会离开本地。
+window.penelopa.downloadTextFile = function (fileName: string, content: string): void {
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    try {
+        anchor.click();
+    } finally {
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+};
+
+// 编辑页工作区的文件拖放层。拖放产生的 FileList 交给现有 InputFile，
+// 因而复用同一套确认、替换和取消逻辑；如果当前不在 Tools 标签，
+// 会先激活它，再等待输入控件挂载。
+window.penelopa.attachFileDrop = function (rootEl: HTMLElement): DropZoneHandle {
+    let depth = 0;
+    let disposed = false;
+    let dropToken = 0;
+
+    const hasFiles = (event: DragEvent): boolean => {
+        const types = event.dataTransfer?.types;
+        return !!types && Array.from(types).indexOf('Files') >= 0;
+    };
+
+    const show = (): void => {
+        rootEl.classList.add('penelopa-drop-active');
+    };
+
+    const hide = (): void => {
+        depth = 0;
+        rootEl.classList.remove('penelopa-drop-active');
+    };
+
+    const findInput = (): HTMLInputElement | null => {
+        const input = rootEl.querySelector(
+            '.penelopa-file-button input[type="file"]');
+        return input ? input as HTMLInputElement : null;
+    };
+
+    const activateToolsTab = (): void => {
+        const tabs = rootEl.querySelectorAll<HTMLElement>('[role="tab"]');
+        for (const tab of Array.from(tabs)) {
+            if ((tab.textContent ?? '').trim() === 'Tools') {
+                if (tab.getAttribute('aria-selected') !== 'true') {
+                    tab.click();
+                }
+                return;
+            }
+        }
+    };
+
+    const assign = (files: File[], token: number): void => {
+        if (disposed || token !== dropToken) {
+            return;
+        }
+
+        const input = findInput();
+        if (!input || input.disabled) {
+            return;
+        }
+
+        try {
+            // FileList 可能在 drop 事件结束后被清空；复制 File 引用，
+            // 在真正投递时再构造一个新的 DataTransfer。
+            const transfer = new DataTransfer();
+            for (const file of files) {
+                transfer.items.add(file);
+            }
+            input.files = transfer.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (error) {
+            console.error('[Penelopa] file drop failed', error);
+        }
+    };
+
+    const deliver = (files: File[], attempts: number, token: number): void => {
+        if (disposed || token !== dropToken) {
+            return;
+        }
+
+        const input = findInput();
+        if (input && !input.disabled) {
+            // 新挂载的 InputFile 在 DOM 出现后还要一帧才完成事件绑定。
+            setTimeout(() => assign(files, token), 100);
+            return;
+        }
+
+        if (attempts <= 0) {
+            console.warn('[Penelopa] file drop could not find the import input');
+            return;
+        }
+
+        activateToolsTab();
+        setTimeout(() => deliver(files, attempts - 1, token), 50);
+    };
+
+    const onDragEnter = (event: DragEvent): void => {
+        if (!hasFiles(event)) {
+            return;
+        }
+
+        depth++;
+        show();
+    };
+
+    const onDragOver = (event: DragEvent): void => {
+        if (!hasFiles(event)) {
+            return;
+        }
+
+        event.preventDefault();
+        if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'copy';
+        }
+        show();
+    };
+
+    const onDragLeave = (): void => {
+        depth--;
+        if (depth <= 0) {
+            hide();
+        }
+    };
+
+    const onDrop = (event: DragEvent): void => {
+        if (!hasFiles(event)) {
+            hide();
+            return;
+        }
+
+        event.preventDefault();
+        const files = event.dataTransfer?.files
+            ? Array.from(event.dataTransfer.files)
+            : [];
+        hide();
+        if (files.length === 0) {
+            return;
+        }
+
+        const token = ++dropToken;
+        deliver(files, 20, token);
+    };
+
+    const onDragEnd = (): void => hide();
+
+    rootEl.addEventListener('dragenter', onDragEnter);
+    rootEl.addEventListener('dragover', onDragOver);
+    rootEl.addEventListener('dragleave', onDragLeave);
+    rootEl.addEventListener('drop', onDrop);
+    rootEl.addEventListener('dragend', onDragEnd);
+    window.addEventListener('dragend', onDragEnd);
+    window.addEventListener('drop', onDragEnd);
+    window.addEventListener('blur', onDragEnd);
+
+    return {
+        dispose(): void {
+            disposed = true;
+            dropToken++;
+            rootEl.removeEventListener('dragenter', onDragEnter);
+            rootEl.removeEventListener('dragover', onDragOver);
+            rootEl.removeEventListener('dragleave', onDragLeave);
+            rootEl.removeEventListener('drop', onDrop);
+            rootEl.removeEventListener('dragend', onDragEnd);
+            window.removeEventListener('dragend', onDragEnd);
+            window.removeEventListener('drop', onDragEnd);
+            window.removeEventListener('blur', onDragEnd);
+            hide();
+        },
+    };
 };
 
 window.penelopa.watchDpr = function (dotNetRef: DotNetRef): DprWatchHandle {

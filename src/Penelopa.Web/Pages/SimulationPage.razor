@@ -949,7 +949,9 @@
         _runtime.Stop();
         if (hadSession)
         {
-            PrimitiveService.NotifyPrimitivesChanged(_roots);
+            // 恢复的是仿真临时值，不是用户对文档的编辑；用 Transient 刷新编辑器，
+            // 避免一次播放就使导入撤销快照失效。
+            PrimitiveService.NotifyTransientValuesChanged();
         }
     }
 

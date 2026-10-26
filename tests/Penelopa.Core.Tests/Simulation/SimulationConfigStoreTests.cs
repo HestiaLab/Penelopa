@@ -476,6 +476,36 @@ public class SimulationConfigStoreTests
         Assert.Equal(1, changed);
     }
 
+
+    [Fact]
+    public void CaptureRestoreState_RestoresConfigAndUndoRedo()
+    {
+        var rectangle = AddRectangle();
+        var store = CreateStore();
+        AddLinearTrack(store, rectangle, "PosX");
+        store.Undo();
+        store.SetLoop(true);
+
+        var state = store.CaptureState();
+        store.ReplaceConfig(SimulationConfig.Empty);
+        Assert.False(store.CanUndo);
+        Assert.False(store.CanRedo);
+
+        store.RestoreState(state);
+
+        Assert.True(store.Config.Loop);
+        var track = Assert.Single(store.Config.Tracks);
+        Assert.Equal(10f, track.Keyframes[1].Value);
+        Assert.True(store.CanUndo);
+        Assert.True(store.CanRedo);
+
+        store.Redo();
+        Assert.Equal(100f, Assert.Single(store.Config.Tracks).Keyframes[1].Value);
+
+        store.Undo();
+        Assert.Equal(10f, Assert.Single(store.Config.Tracks).Keyframes[1].Value);
+    }
+
     private SimulationConfigStore CreateStore() => new(_service);
 
     private Rectangle AddRectangle(string name = "Rectangle")

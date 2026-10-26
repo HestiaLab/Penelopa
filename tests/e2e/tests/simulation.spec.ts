@@ -101,7 +101,7 @@ test('simulation page shows an empty state without a document', async ({ page })
 
   await expect(page.getByRole('heading', { name: 'Simulation', exact: true })).toBeVisible();
   await expect(
-    page.getByText('No primitives yet. Return to the editor to add one.'),
+    page.getByText('No primitives yet. Return to the editor to add one or load the sample.'),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
   await expectSimulationClean(page, errors);

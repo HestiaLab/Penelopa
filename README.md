@@ -10,9 +10,21 @@ Penelopa hosts a SkiaSharp drawing canvas, a primitive tree, alignment actions, 
 
 ## Preview
 
-![Penelopa editor in light mode](docs/screenshot.png)
+![Penelopa editor with the Loop Study 01 sample loaded](docs/screenshot.png)
 
 Six-region dockable workspace: SkiaSharp drawing canvas, primitive tree, alignment tools, and property editor.
+
+![Simulation workspace playing the Loop Study 01 sample](docs/simulation.png)
+
+**Loop Study 01** is a bundled 9-second media-player sample with five keyframe tracks. The simulation page shows only the selected widget's two tracks while the rest of the scene keeps playing.
+
+### Try the sample
+
+1. Open the live demo.
+2. In the empty editor, choose **Load Loop Study 01**.
+3. Select **Simulate**, then **Play**.
+
+The sample is a normal v2 document. The editor's **Import file…** / **Export file…** actions read and write the same `.penelopa.json` format without touching localStorage; you can also drag a `.penelopa.json` file anywhere over the editor. An import can be undone once until you edit, save, import again, or reload.
 
 ## Features
 
@@ -47,9 +59,27 @@ Six-region dockable workspace: SkiaSharp drawing canvas, primitive tree, alignme
   exits; Save is Ready-only, dormant tracks are reported with expandable
   details and per-track/remove-all cleanup (undoable), and the v2 document
   format persists the active animation configuration
+- Editor document I/O: import/export `.penelopa.json` v2 files; import parses
+  and shows primitive/track counts and warnings before replacing, and never
+  writes localStorage. Export uses the Save payload and warns when dormant
+  tracks are excluded
+- One-level `Undo import` restores the previous document, selection, both
+  undo/redo stacks and the simulation Loop; it is discarded by a persistent
+  edit, configuration change, successful save, another import/Load, or reload
+- Drag a `.penelopa.json` file anywhere over the editor to import it; the
+  workspace shows a drop overlay and, if needed, activates Tools so the same
+  confirmation is visible. The Import button remains the keyboard path
+- The empty editor offers a bundled **Loop Study 01** v2 sample; it loads into
+  the editor, selects `Step Indicator`, and never autoplays
+- The read-only simulation canvas hides the editor's coordinate axes for a
+  clean presentation
 - Property labels, inline errors, tree selection state and a polite live
   status region for assistive technology; browser page zoom is allowed
 - Bright studio light/dark skin driven by `--penelopa-*` CSS variables
+
+> Import rollback is editor-only and one level deep. Selection, viewport,
+> Export and playback do not discard it; an actual document or simulation edit
+> does.
 
 ## Project Structure
 
@@ -59,7 +89,7 @@ Six-region dockable workspace: SkiaSharp drawing canvas, primitive tree, alignme
 | `src/Penelopa.Core`      | UI-independent primitive model, history, alignment and simulation engine |
 | `src/Penelopa.Rendering` | SkiaSharp canvas rendering and hit testing              |
 | `tests/`                 | xUnit, bUnit (UI) and Playwright (E2E) test suites      |
-| `docs/adr`               | Coordinate, history, selection, grouping and simulation ADRs |
+| `docs/adr`               | Coordinate, history, selection, grouping, simulation and file I/O ADRs |
 
 `Penelopa.Core` does not depend on Blazor or SkiaSharp. Browser input on the canvas is converted into a hit test against the color-key buffer, committed through the shared primitive service, and projected back by Blazor into the panels.
 
@@ -158,6 +188,7 @@ python3 scripts/check-coverage.py
 | [ADR 0004](docs/adr/0004-grouping-deferred.md)           | Grouping and ungrouping existing primitives                          |
 | [ADR 0005](docs/adr/0005-simulation-keyframe-timeline.md) | Simulation keyframe timeline, preview isolation and persistence      |
 | [ADR 0006](docs/adr/0006-simulation-atlas-workspace.md)  | Simulation Atlas workspace, protected regions and layout reset       |
+| [ADR 0007](docs/adr/0007-document-file-import-export.md) | v2 JSON file import/export, bundled sample, and import rollback       |
 
 The GitHub Pages workflow is manual (`workflow_dispatch`); publishing is an
 explicit release action.
