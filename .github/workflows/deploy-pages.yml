@@ -57,11 +57,14 @@ jobs:
       # /Penelopa/. Also append a version query to the entry scripts so a
       # stale CDN/browser cache cannot serve an old boot loader against a new
       # boot manifest (observed as a subresource-integrity hash mismatch).
-      - name: Rewrite base href and cache-bust for the /Penelopa/ subpath
+      # GitHub Pages has no SPA fallback, so a 404.html copy of the entry page
+      # gives deep links such as /Penelopa/simulation a Blazor entry point.
+      - name: Rewrite base href, cache-bust, and emit the SPA fallback
         run: |
           sed -i 's|<base href="/" />|<base href="/Penelopa/" />|' publish/site/wwwroot/index.html
           sed -i "s|src=\"js/penelopa.js\"|src=\"js/penelopa.js?v=${{ github.sha }}\"|" publish/site/wwwroot/index.html
           sed -i "s|src=\"_framework/blazor.webassembly.js\"|src=\"_framework/blazor.webassembly.js?v=${{ github.sha }}\"|" publish/site/wwwroot/index.html
+          cp publish/site/wwwroot/index.html publish/site/wwwroot/404.html
 
       - uses: actions/upload-pages-artifact@v3
         with:

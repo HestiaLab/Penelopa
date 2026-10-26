@@ -25,14 +25,14 @@ public class SimulationShellTests : TestContext
     }
 
     [Fact]
-    public void TopToolbar_ShowsSimulationLink()
+    public void TopToolbar_ShowsBaseRelativeSimulationLink()
     {
         var cut = RenderComponent<PenelopaTopToolbar>();
 
         var link = cut.Find("a");
 
         Assert.Equal("Simulate", link.TextContent.Trim());
-        Assert.Equal("/simulation", link.GetAttribute("href"));
+        Assert.Equal("simulation", link.GetAttribute("href"));
         Assert.Equal(
             "penelopa-simulate-link",
             link.GetAttribute("data-testid"));

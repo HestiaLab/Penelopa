@@ -890,17 +890,19 @@
         }
     }
 
-    private static bool IsSimulationLocation(string location)
+    private bool IsSimulationLocation(string location)
     {
         if (!Uri.TryCreate(location, UriKind.Absolute, out var uri))
         {
             return false;
         }
 
-        return string.Equals(
-            uri.AbsolutePath.TrimEnd('/'),
-            "/simulation",
-            StringComparison.OrdinalIgnoreCase);
+        var basePath = new Uri(Navigation.BaseUri).AbsolutePath;
+        return uri.AbsolutePath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(
+                uri.AbsolutePath[basePath.Length..].TrimEnd('/'),
+                "simulation",
+                StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -926,7 +928,8 @@
     {
         EndSession();
         await StopFrameLoopAsync();
-        Navigation.NavigateTo("/");
+        // Keep the deployment base path (/Penelopa/ on GitHub Pages project sites).
+        Navigation.NavigateTo(Navigation.BaseUri);
     }
 
     public async ValueTask DisposeAsync()
