@@ -1,0 +1,36 @@
+@namespace Penelopa.Web.Components.Simulation
+@using Penelopa.Core.Simulation
+
+@if (Issues.Count > 0)
+{
+    <div class="penelopa-simulation-error penelopa-simulation-issues"
+         role="status"
+         aria-live="polite">
+        <p>Playback is blocked:</p>
+        <ul>
+            @foreach (var issue in Issues)
+            {
+                <li>@FormatIssue(issue)</li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public IReadOnlyList<SimulationValidationIssue> Issues { get; set; } =
+        Array.Empty<SimulationValidationIssue>();
+
+    private static string FormatIssue(SimulationValidationIssue issue)
+    {
+        if (string.IsNullOrEmpty(issue.PropertyName))
+        {
+            return issue.Message;
+        }
+
+        var keyframe = issue.KeyframeIndex is { } index
+            ? $" (keyframe {index + 1})"
+            : string.Empty;
+        return $"{issue.PropertyName}{keyframe}: {issue.Message}";
+    }
+}

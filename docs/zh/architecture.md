@@ -7,7 +7,7 @@ Penelopa 是一个消费 Atlas.Blazor 0.3.0 NuGet 包的 Blazor WebAssembly 图�
 ## 分层
 
 ```text
-src/Penelopa（WASM 应用）
+src/Penelopa.Web（WASM 应用）
   ├── Components/PenelopaWorkspace.razor   Atlas 六区域可停靠布局
   ├── Components/PenelopaTopToolbar.razor  通过 Atlas 顶栏插槽承载
   ├── Components/PenelopaStatusBar.razor   通过 Atlas 状态栏插槽承载
@@ -25,6 +25,7 @@ src/Penelopa.Core                          图元模型 + 对齐算法
 - `Alignment/` — `AlignType` 枚举（Left/HCenter/Right/Top/VCenter/Bottom）、`Box`（轴对齐包围盒）、`Transform` 与 `AlignExtensions.Align`——将选中项移动到其对齐值与整体包围盒匹配。操作幂等：已对齐的选择返回 false 且不移动。
 - `Services/IPrimitiveService` — 文档与选区的唯一状态源，通过 DI 在各面板间共享（单例）。`GetAll()` / `GetSelection()` 返回只读快照，`GetState()` 返回不可变 `DocumentState`。结构操作校验容器属于本文档，拒绝自身/重复父级/环路；内部维护文档归属，阻止同一图元挂到两个文档。`GroupSelection` / `TryUngroup` 实现 ADR-0004 的根级分组规则。
 - `Services/DocumentHistory` — 快照式事务。快照按引用保存图元树、属性值与容器子元素；选择不进入快照（见 ADR-0002）。每次修改最多生成一个撤销条目，取消手势与撤销共用同一快照。
+- `Simulation/` — 不可变关键帧配置（`SimulationConfig` / `SimulationTrack` / `SimulationKeyframe`）、结构与领域校验、确定性求值器（线性、缓动预设、阶跃与 `[0,1]` 控制点的 cubic-bezier）、全局时间轴、预览隔离的 `SimulationRuntime`、单例 `SimulationConfigStore`（50 步配置历史与 Dormant 解析）以及采样式 `SimulationBoundsEstimator`。不依赖 Blazor、SkiaSharp 或 JS。
 
 ### Penelopa.Rendering
 
@@ -197,12 +198,27 @@ Ctrl+Z / Ctrl+Shift+Z（或 Ctrl+Y）通过指针层的按键处理驱动 undo/r
 
 `DocumentSerializer` 把文档往返为 JSON：图元按类型存储其属性值
 （颜色键不序列化——加载时重建），容器嵌套子元素，选择保存为图元 Id
-以便加载后按新树重解析。文档带 `Version` 1；缺失版本按旧版 v1 接受，
-未来/负版本明确拒绝。加载时校验非空且唯一的 Id、拒绝非容器带子元素，
-并限制节点数（10,000）、嵌套深度（64）与 UTF-8 字节数（4 MiB）。
-Tools 面板保存前把上一版写入 `penelopa.document.backup`；加载先解析校验、
-再要求确认，失败时保留当前文档并显示可读错误；成功时总是应用解析后的
-选区（包括空选区）。数据存储于 `localStorage` 的 `penelopa.document`。
+以便加载后按新树重解析。文档带 `Version` 2；缺失版本/v1 按无仿真配置
+接受，未来/负版本明确拒绝。可选 `simulation` 段保存循环开关与轨道
+（图元 Id、Float 属性名、带时间/值/插值的关键帧）。加载时几何严格校验，
+仿真段独立校验：先解析目标，目标图元/属性已不存在的轨道在校验前逐条
+剪除并警告；Active 轨道结构性非法时整段丢弃并警告，但文档照常加载。原始
+轨道/关键帧数量上限在剪除前检查。JSON 数组中为 `null` 的图元或子节点按
+无效文档拒绝，不会解引用崩溃。Dormant 轨道不会写入保存结果。加载
+仍校验非空且唯一的 Id、拒绝非容器带子元素，并限制节点数（10,000）、
+嵌套深度（64）与 UTF-8 字节数（4 MiB）。
+
+`DocumentStorage` 是 Tools 面板与仿真页共享的保存/加载边界：序列化 v2
+文档、把上一版写入 `penelopa.document.backup`，并把 JS 异常转换为可显示
+错误。localStorage 访问经由 `penelopa.readStorage`/`writeStorage` 帮助函数
+返回结果对象而非抛异常，因此配额/安全限制等预期失败不会触发 Blazor 全局
+错误覆盖层。加载边界还会把任何未预期异常转换为 `DocumentLoadResult` 错误，
+避免损坏负载击穿渲染器；完整异常写入日志，UI 只显示单行摘要。Tools 面板
+先解析校验再要求确认，失败时保留当前文档；成功时总是应用解析后的选区
+（包括空选区）。面板使用单一 pending 操作（Dormant 保存确认或加载确认）：
+开始加载会取消未确认的 Dormant 保存；确认保存时重新计算当前活动/失效
+轨道，绝不复用旧快照。加载会同时替换文档与仿真配置。数据存储于
+`localStorage` 的 `penelopa.document`。
 
 ### 交互
 
@@ -229,8 +245,69 @@ ESC、pointer-cancel、捕获丢失或窗口失焦恢复快照并回到 Idle。�
   显示与批量写入。
 - 画布可聚焦并具备键盘路径（见下节）。
 
+### 仿真页
+
+`/simulation` 页面（`Pages/SimulationPage.razor`）与编辑页共享单例
+`IPrimitiveService` 与 `SimulationConfigStore`，但维护自己的本地选区。画布
+只读：无命中测试、拖拽、缩放或选区覆盖层；可见表面暴露为 `role="img"`，
+Fit 按钮仍是普通按钮。布局为固定三栏（图元树、画布、检视器）加传输条与
+全局时间轴。
+
+`SimulationRuntime` 是确定性的预览会话。首次 Play/定位/步进时捕获所有
+Float 属性的基础值，把轨道解析为 Active/Dormant，并在请求时刻求值；运行时
+临时写入属性值，在 Stop、离开页面或异常时恢复基础值，且从不产生文档历史
+条目。离开页面（含浏览器后退）会在等待任何 JS 句柄之前同步停止会话，并
+只向共享图元服务通知一次，使编辑器的属性面板/画布无需重新选择即可重读
+恢复后的基础值。状态为 Ready / Preview / Playing / Paused / Finished，所有
+活动轨道共享绝对时间轴 `0..T`（`T` 为最后一个关键帧时间）；Loop 循环整条
+时间轴，否则到达 `T` 后进入 Finished 并保持末帧。
+
+JS `requestAnimationFrame` 循环调用 `OnSimulationFrame`；页面用单调
+`Stopwatch` 推进运行时（不累加帧步长），在 Ready/Paused/Finished 停止循环，
+标签页隐藏时自动暂停。播放期间启用 SKGLView render loop：仅靠按需
+`Invalidate` 会与仿真 rAF 的顺序合并到约 30 paint/s；Ready/Paused/Finished
+恢复按需渲染。`SimulationReadoutChannel` 以 20Hz 把时间与轨道值发布给小组件（时间读数、逐属性当前值、播放头、原生滑杆），
+检视器表格与时间轴标记不在读数路径上重渲染，图元树或整页也不重渲染。
+
+渲染走只读路径（`CanvasRenderer.Render(..., renderHitBuffer: false)`，
+`ScenePainter` 接受 null 命中画布），播放时跳过颜色键缓冲与选区覆盖层。
+`SimulationBoundsEstimator` 采样关键帧时间与相邻中点、合并世界包围盒并恢复
+基础值，用于进入页面时的动画范围 Fit 与 Fit 按钮。
+
+检视器用 **Animate** 建轨（播放头与 `+1s` 各一帧），在播放头添加/更新关键帧，
+编辑时间/值/插值/自定义 cubic-bezier 控制点，删除关键帧/轨道，并显示实时
+轨道值；值标注为相对父级。时间轴只展示所选图元的轨道，含标尺、原生 range
+播放头、缩放/滚动与可聚焦关键帧标记。点击刻度会 seek，双击标记走与检视器
+相同的 Go to 路径。拖动标记会用 pointer capture 重定时，但仅在真正移动后
+才捕获指针（点击/双击仍以标记为目标），吸附 1/60s、保持 1ms 最小间隔并夹在
+相邻帧之间；检视器是键盘替代路径并提供 Go to。关键帧选择以时间为锚点，
+删除或撤销相邻关键帧后仍跟随同一帧，不会跳到别的索引。
+
+配置编辑在 Ready/Preview/Paused/Finished 可用，Playing 中只读。独立的 50 步
+配置历史（按钮以及焦点不在文本控件时的 Ctrl+Z/Ctrl+Y）在进入页面与加载文档
+时清空，且从不与文档历史共享条目。非法活动轨道会阻止播放，页面以 polite 汇总区域列出全部阻断原因，字段编辑
+仍使用内联错误；
+Dormant 轨道显示在页面横幅中，提供数量、可展开明细（图元 Id、属性、关键帧
+数）、逐条删除与全部清理，清理可撤销。Save 仅在 Ready 可用，写入文档与
+活动仿真配置；存在 Dormant 轨道时必须确认并排除它们；移除最后一个失效
+轨道会清除待确认的保存。
+
+周期性能基准实测：500 图元 + 100 活动轨道 59.9–60.2 JS rAF tick/s、59.9–60.0 实际
+.NET frame/s、59.9–60.1 SKGLView paint/s；Stop 后 Ready 状态在参考 headless
+Chromium/1440×900 环境下空闲主线程 CPU 2.94–3.75%；选中 200 关键帧轨道播放时
+约 60 tick/s、约 60 paint/s（多次运行 59.79–60.18 / 59.76–60.04）。性能探针分别读取 rAF 尝试、`OnSimulationFrame`
+执行次数与 `OnPaintSurface` 回调次数；仅看 tick 会高估绘制帧。上述计数器仅在
+PERF 基准于应用启动前设置 `__PENELOPA_PERF__` 时挂到 `window.penelopa`；
+普通编辑页/仿真页不暴露性能计数器 API。
+
 ## 可访问性
 
+- 仿真页提供导航时聚焦的 `h1`（`tabindex="-1"`）、从不自动播放、画布 `role="img"`、原生传输
+  按钮与 `aria-live="polite"` 状态/错误区域；关键帧字段有关联标签与
+  `aria-describedby`，检视器提供不依赖拖拽的键盘编辑路径；关键帧标记视觉
+  尺寸不变但扩大了不可见命中区。页面检测
+  `prefers-reduced-motion` 并提示，但仍允许用户主动播放；20Hz 时间/数值读数
+  有意不设为实时区域。
 - 画布是 `role="application"` 的可聚焦表面，名称为 `Drawing canvas`，
   并通过视觉隐藏段落说明键盘操作。方向键按 1 世界单位移动顶层选区
   （Shift = 10），Delete 删除，Escape 取消手势。编辑器快捷键会忽略
@@ -251,6 +328,9 @@ Playwright 布局测试在各宽度断言画布宽度、无水平溢出，以及
 Add/Align/Properties 控件可见。另有特征测试记录：Atlas 0.3.0 不会把初始
 比例轨道钳位到 160px 最小宽度；若升级后行为改变，需要同步修订该测试与本节。
 
+仿真页为固定三栏加底部时间轴；列宽在 1024px 与 820px 处收窄，时间轴在缩放
+时横向滚动、轨道较多时纵向滚动，并复用 `--penelopa-*` 主题变量。
+
 ## 扩展图元与属性
 
 目前没有类型注册表。新增图元类型仍需修改：`Primitives/` 模型、
@@ -261,7 +341,7 @@ Add/Align/Properties 控件可见。另有特征测试记录：Atlas 0.3.0 不�
 
 ## 高度链
 
-Atlas 工作区由其父级确定尺寸；编辑器外壳必须将 `html/body/#app/.penelopa-main/.penelopa-shell/.atlas-v2-workspace` 链到 100% 高度（见 `wwwroot/css/app.css`）。顶栏与状态栏在 Atlas 宿主内部渲染，分别位于工作区上方与下方。
+Atlas 工作区由其父级确定尺寸；编辑器外壳必须将 `html/body/#app/.penelopa-main/.penelopa-shell/.atlas-v2-workspace` 链到 100% 高度（见 `wwwroot/css/app.css`）。顶栏与状态栏在 Atlas 宿主内部渲染，分别位于工作区上方与下方。仿真页将 `.penelopa-simulation` 链入 `html/body/#app/.penelopa-main`，并使用自己的顶栏/主体/时间轴纵向 Flex 布局（见 `wwwroot/css/simulation.css`）。
 
 ## 对齐语义
 
@@ -286,6 +366,7 @@ Top/Bottom 使用 MaxY/MinY 是因为画布做了 y-flip（屏幕 y 向下增长
 | [0002](../adr/0002-history-transactions-and-snapshots.md) | 历史事务与快照内容 |
 | [0003](../adr/0003-selection-model.md) | 选择规范化与多选编辑 |
 | [0004](../adr/0004-grouping-deferred.md) | 分组与取消分组现有图元 |
+| [0005](../adr/0005-simulation-keyframe-timeline.md) | 关键帧仿真时间轴、预览隔离与持久化 |
 
 ## 工具链说明
 
@@ -301,10 +382,11 @@ Top/Bottom 使用 MaxY/MinY 是因为画布做了 y-flip（屏幕 y 向下增长
   `dotnet restore --locked-mode`，本地普通 restore 可能更新锁文件。
 - Phase C 删除了 Bootstrap 与 Open Iconic 字体包，剩余表单/面板样式收敛到
   `wwwroot/css/app.css`；应用只发布 Atlas.Blazor CSS、应用样式与编辑器资源。
-- 测试：xUnit 覆盖 Core/Rendering；bUnit（`tests/Penelopa.Ui.Tests`）覆盖面板
+- 测试：xUnit 覆盖 Core/Rendering；bUnit（`tests/Penelopa.Web.Tests`）覆盖面板
   状态、ARIA 接线与持久化 UI；Playwright（`tests/e2e`）在真实 Chromium 中
   驱动桌面与窄视口编辑器。CI 运行 JS/Node 测试、生成 JS 漂移检查、覆盖率
-  门禁（Core ≥90%、Rendering ≥85%）、Chromium E2E，以及依赖审计
+  门禁（Core ≥90%、Rendering ≥85%，`Simulation/` 与 `DocumentSerializer`
+  文件级 ≥90%）、Chromium E2E，以及依赖审计
   （两个 npm 根目录的 `npm audit` 与
   `dotnet list package --vulnerable --include-transitive`）。NuGet 审计在
   high/critical 时失败。bUnit 仅用于测试的 DOM 解析器仍带有中危 AngleSharp
@@ -313,4 +395,4 @@ Top/Bottom 使用 MaxY/MinY 是因为画布做了 y-flip（屏幕 y 向下增长
   前置项。高危的 `Microsoft.Extensions.Caching.Memory` 已通过固定 6.0.2 修复。
 - GitHub Pages 部署保持 `workflow_dispatch` 手动触发，发布是显式操作，
   不会随每次 `main` 合并自动上线。
-- 按需渲染后，`PERF=1` 的 Playwright 周期基准实测：空文档空闲主线程 CPU 约 0.03%、500 矩形空闲约 0.02%（headless Chromium，Debug 开发服务器）；原审查中的持续渲染空文档空闲约 28%。基准位于 `tests/e2e/tests/perf.spec.ts`，未设置 `PERF=1` 时跳过。
+- 按需渲染后，`PERF=1` 的 Playwright 周期基准实测：空文档空闲主线程 CPU 约 0.03%、500 矩形空闲约 0.02%（headless Chromium，Debug 开发服务器）；原审查中的持续渲染空文档空闲约 28%。基准位于 `tests/e2e/tests/perf.spec.ts` 与 `tests/e2e/tests/simulation-perf.spec.ts`，未设置 `PERF=1` 时跳过。

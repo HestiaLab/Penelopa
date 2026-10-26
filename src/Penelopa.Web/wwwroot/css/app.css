@@ -1,0 +1,718 @@
+/* ============================================================
+   Penelopa — bright studio canvas-editor skin with light/dark
+   themes. Light gray-blue surfaces, a single blue accent, 1px
+   borders and soft shadows so the drawing canvas stays the
+   focal point. The whole palette is driven by --penelopa-*
+   variables: :root defines the light palette, and @media
+   (prefers-color-scheme: dark) swaps in a dark variant. Atlas
+   chrome that the variable contract covers (ADR-0023 /
+   REQ-NF-009) is themed through --atlas-* overrides;
+   effect-layer styling (borders, radii, shadows) stays in
+   consumer selectors below.
+   ============================================================ */
+
+/* ---- 1. Layout skeleton ---- */
+
+html,
+body,
+#app,
+.penelopa-main,
+.penelopa-shell,
+.penelopa-shell > .atlas-v2-workspace {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+body {
+    min-width: 20rem;
+    background: var(--penelopa-bg);
+}
+
+button {
+    font: inherit;
+}
+
+h1:focus {
+    outline: none;
+}
+
+#blazor-error-ui {
+    display: none;
+}
+
+/* ---- 2. Penelopa palette ---- */
+
+:root {
+    color-scheme: light dark;
+    font-family: "Segoe UI", "Candara", "Trebuchet MS", sans-serif;
+
+    /* Palette — light (bright studio) */
+    --penelopa-bg: #f2f4f8;
+    --penelopa-surface: #ffffff;
+    --penelopa-chrome: #eef0f4;
+    --penelopa-chrome-ink: #1f2328;
+    --penelopa-accent: #1a73e8;
+    --penelopa-green: #1a7f37;
+    --penelopa-ink: #1f2328;
+    --penelopa-muted: #656d76;
+    --penelopa-border: #d0d7de;
+    --penelopa-hover: #e2e8f0;
+    --penelopa-selection: #d6e4ff;
+    --penelopa-scrollbar-thumb: #c5cbd4;
+    --penelopa-scrollbar-thumb-hover: #a8b0bc;
+    --penelopa-danger: #cf222e;
+    --penelopa-warning: #9a6700;
+    background: var(--penelopa-bg);
+    color: var(--penelopa-ink);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        /* Palette — dark (bright studio night) */
+        --penelopa-bg: #1c1d20;
+        --penelopa-surface: #25262a;
+        --penelopa-chrome: #131417;
+        --penelopa-chrome-ink: #e6e8eb;
+        --penelopa-accent: #4d9fff;
+        --penelopa-green: #3fb950;
+        --penelopa-ink: #e6e8eb;
+        --penelopa-muted: #9da3ab;
+        --penelopa-border: #383a3f;
+        --penelopa-hover: #2f3136;
+        --penelopa-selection: #2b3a52;
+        --penelopa-scrollbar-thumb: #464a52;
+        --penelopa-scrollbar-thumb-hover: #5a5f69;
+        --penelopa-danger: #ff7b72;
+        --penelopa-warning: #d29922;
+        background: var(--penelopa-bg);
+        color: var(--penelopa-ink);
+    }
+}
+
+/* ---- 3. Atlas variable contract overrides ---- */
+
+.penelopa-shell .atlas-v2-workspace {
+    --atlas-accent: var(--penelopa-accent);
+    --atlas-surface: var(--penelopa-surface);
+    --atlas-text: var(--penelopa-ink);
+    --atlas-splitter-size: 0.25rem;
+    --atlas-splitter-hit-area: 0.3rem;
+    --atlas-chrome-height: 2.5rem;
+    --atlas-gap: 0.5rem;
+    --atlas-padding-compact: 0.5rem 0.75rem;
+    --atlas-radius: 0.375rem;
+    --atlas-radius-sm: 0.25rem;
+    --atlas-border-width: 1px;
+    --atlas-focus-ring-width: 2px;
+    --atlas-splitter-opacity: 0.9;
+    --atlas-splitter-opacity-hover: 1;
+    --atlas-splitter-opacity-focus: 1;
+    --atlas-drop-highlight-alpha-soft: 18%;
+    --atlas-drop-highlight-alpha-strong: 28%;
+    --atlas-toolbar-divider-opacity: 0.4;
+    --atlas-drag-preview-opacity: 0.98;
+    /* Chrome tokens (ADR-0023 extension) */
+    --atlas-group-bg: var(--penelopa-surface);
+    --atlas-chrome-bg: var(--penelopa-chrome);
+    --atlas-tab-text: var(--penelopa-chrome-ink);
+    --atlas-tab-text-active: var(--penelopa-accent);
+    --atlas-tab-bg-active: var(--penelopa-surface);
+    --atlas-tab-bg-hover: var(--penelopa-hover);
+    --atlas-splitter-color: color-mix(in srgb, var(--penelopa-ink) 35%, transparent);
+    background: var(--penelopa-bg);
+    color: var(--penelopa-ink);
+}
+
+/* ---- 4. Atlas chrome effect layer ---- */
+
+.penelopa-shell .atlas-v2-work-area,
+.penelopa-shell .atlas-v2-split,
+.penelopa-shell .atlas-v2-group,
+.penelopa-shell .atlas-v2-content-stack,
+.penelopa-shell .atlas-v2-content-outlet {
+    min-width: 0;
+    min-height: 0;
+}
+
+.penelopa-shell .atlas-v2-group {
+    border: 1px solid var(--penelopa-border);
+    border-radius: var(--atlas-radius, 0.375rem);
+    box-shadow: 0 0.125rem 0.5rem color-mix(in srgb, var(--penelopa-ink) 14%, transparent);
+    margin: 0.15rem;
+}
+
+.penelopa-shell .atlas-v2-splitter {
+    border-radius: 0.125rem;
+    box-shadow: 0 0 0 1px var(--penelopa-bg);
+}
+
+.penelopa-shell .atlas-v2-panel-header,
+.penelopa-shell .atlas-v2-tab-strip {
+    min-height: 2.5rem;
+    align-items: center;
+    border-bottom: 1px solid var(--penelopa-border);
+    border-radius: 0.3rem 0.3rem 0 0;
+    user-select: none;
+}
+
+.penelopa-shell .atlas-v2-panel-header {
+    padding: 0 0.75rem;
+    font-weight: 600;
+}
+
+.penelopa-shell .atlas-v2-tab-strip {
+    padding-inline: 0.4rem;
+    gap: 0.15rem;
+}
+
+.penelopa-shell .atlas-v2-tab-strip [role="tab"] {
+    min-height: 2.4rem;
+    max-width: 13rem;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: 0.3rem 0.3rem 0 0;
+    padding: 0.25rem 0.8rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.penelopa-shell .atlas-v2-tab-strip [role="tab"][aria-selected="true"] {
+    border-color: var(--penelopa-border);
+    border-bottom-color: var(--atlas-tab-bg-active);
+    box-shadow: inset 0 2px 0 var(--penelopa-accent);
+}
+
+.penelopa-shell .atlas-v2-toolbar {
+    width: 2.5rem;
+    height: 100%;
+    box-sizing: border-box;
+    align-items: center;
+    padding: 0.3rem 0;
+    border-inline: 1px solid var(--penelopa-border);
+}
+
+.penelopa-shell .atlas-v2-toolbar-region {
+    width: 100%;
+}
+
+.penelopa-shell .atlas-v2-toolbar button {
+    width: 1.9rem;
+    min-height: 2.25rem;
+    margin: 0.12rem auto;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0.25rem;
+    padding: 0.25rem;
+    background: transparent;
+    color: var(--penelopa-chrome-ink);
+    font-weight: 600;
+    writing-mode: vertical-rl;
+}
+
+.penelopa-shell .atlas-v2-toolbar button:hover,
+.penelopa-shell .atlas-v2-toolbar button[aria-selected="true"] {
+    background: var(--penelopa-surface);
+    color: var(--penelopa-accent);
+    box-shadow: inset 0 0 0 1px var(--penelopa-border);
+}
+
+/* ---- 5. Penelopa top toolbar / status bar ---- */
+
+.penelopa-topbar {
+    min-height: 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.6rem;
+    background: var(--penelopa-chrome);
+    border-bottom: 1px solid var(--penelopa-border);
+    color: var(--penelopa-chrome-ink);
+}
+
+.penelopa-product {
+    width: 5.75rem;
+    height: 1.6rem;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--penelopa-chrome-ink) 24%, transparent);
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--penelopa-chrome-ink);
+    font-weight: 700;
+}
+
+.penelopa-topbar-link {
+    margin-left: auto;
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    height: 1.6rem;
+    padding: 0 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--penelopa-chrome-ink) 24%, transparent);
+    border-radius: 0.25rem;
+    color: inherit;
+    background: transparent;
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+.penelopa-topbar-link:hover {
+    background: var(--penelopa-hover);
+}
+
+.penelopa-topbar-link:focus-visible {
+    outline: 2px solid var(--penelopa-accent);
+    outline-offset: 2px;
+}
+
+.penelopa-menu,
+.penelopa-runner {
+    display: flex;
+    align-items: center;
+    gap: 0.12rem;
+}
+
+.penelopa-menu button,
+.penelopa-runner button {
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.55rem;
+    background: transparent;
+    color: var(--penelopa-chrome-ink);
+    font-weight: 600;
+}
+
+.penelopa-menu button:hover,
+.penelopa-runner button:hover {
+    background: color-mix(in srgb, var(--penelopa-chrome-ink) 14%, transparent);
+}
+
+.penelopa-runner {
+    margin-inline-start: auto;
+}
+
+.penelopa-branch {
+    color: color-mix(in srgb, var(--penelopa-chrome-ink) 70%, transparent);
+    margin-inline-end: 0.35rem;
+}
+
+.penelopa-target {
+    min-width: 8.5rem;
+    text-align: start;
+    background: var(--penelopa-surface) !important;
+    border-color: var(--penelopa-border) !important;
+    color: var(--penelopa-ink) !important;
+}
+
+.penelopa-run {
+    color: var(--penelopa-accent) !important;
+}
+
+.penelopa-statusbar {
+    min-height: 1.55rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0 0.65rem;
+    background: var(--penelopa-chrome);
+    border-top: 1px solid var(--penelopa-border);
+    color: var(--penelopa-chrome-ink);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.penelopa-status-spacer {
+    flex: 1;
+}
+
+.penelopa-ok {
+    color: var(--penelopa-green);
+}
+
+/* ---- 6. Penelopa content panels ---- */
+
+.penelopa-tools,
+.penelopa-tree,
+.penelopa-properties {
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: auto;
+    padding: 0.75rem;
+    background: var(--penelopa-surface);
+    color: var(--penelopa-ink);
+    font-size: 0.85rem;
+}
+
+.penelopa-tools h3 {
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--penelopa-ink);
+}
+
+.penelopa-tool-section {
+    margin-bottom: 1rem;
+}
+
+.penelopa-tool-label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--penelopa-muted);
+    margin-bottom: 0.35rem;
+}
+
+.penelopa-tool-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.penelopa-tool-button {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--penelopa-surface);
+    border: 1px solid var(--penelopa-border);
+    border-radius: 0.25rem;
+    color: var(--penelopa-ink);
+}
+
+.penelopa-tool-button:hover {
+    background: var(--penelopa-hover);
+    border-color: var(--penelopa-accent);
+    color: var(--penelopa-accent);
+}
+
+.penelopa-tool-button:active {
+    background: var(--penelopa-selection);
+}
+
+.penelopa-tree-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.penelopa-tree-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.3rem 0.6rem;
+    margin-bottom: 0.2rem;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--penelopa-ink);
+    cursor: pointer;
+}
+
+.penelopa-tree-item:hover {
+    background: var(--penelopa-hover);
+}
+
+.penelopa-tree-item.selected {
+    background: var(--penelopa-selection);
+    color: var(--penelopa-ink);
+    border-color: var(--penelopa-accent);
+}
+
+.penelopa-tree-children {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 0.5rem;
+}
+
+.penelopa-tool-hint {
+    margin: 0.25rem 0 0;
+    font-size: 0.75rem;
+    color: var(--penelopa-muted);
+}
+
+.penelopa-tool-confirm {
+    margin-top: 0.5rem;
+    padding: 0.45rem;
+    border: 1px solid var(--penelopa-border);
+    border-radius: 0.25rem;
+    background: var(--penelopa-hover);
+}
+
+.penelopa-tool-message {
+    margin: 0.35rem 0 0;
+    font-size: 0.75rem;
+    color: var(--penelopa-muted);
+}
+
+.penelopa-tool-message.is-error {
+    color: var(--penelopa-danger);
+}
+
+.penelopa-tool-message.is-warning {
+    color: var(--penelopa-warning);
+}
+
+.penelopa-tree-empty,
+.penelopa-properties-empty {
+    color: var(--penelopa-muted);
+}
+
+.penelopa-properties-title {
+    font-weight: 600;
+    margin-bottom: 0.6rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--penelopa-border);
+}
+
+.penelopa-properties-hint {
+    margin: 0 0 0.6rem;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--penelopa-muted);
+}
+
+.penelopa-properties-item {
+    margin-bottom: 0.6rem;
+}
+
+.penelopa-prop-field {
+    min-width: 0;
+}
+
+.penelopa-properties .penelopa-prop-label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--penelopa-muted);
+    margin-bottom: 0.25rem;
+}
+
+.penelopa-properties .penelopa-prop-input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid var(--penelopa-border);
+    border-radius: 0.25rem;
+    background: var(--penelopa-surface);
+    color: var(--penelopa-ink);
+    font: inherit;
+}
+
+.penelopa-properties .penelopa-prop-input:focus-visible {
+    outline: var(--atlas-focus-ring-width, 2px) solid var(--penelopa-accent);
+    outline-offset: 1px;
+}
+
+.penelopa-properties .penelopa-prop-input.is-invalid {
+    border-color: var(--penelopa-danger);
+}
+
+.penelopa-prop-error {
+    margin-top: 0.25rem;
+    font-size: 0.72rem;
+    color: var(--penelopa-danger);
+}
+
+.penelopa-canvas-scroll {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: auto;
+}
+
+/* While a pointer drag is active, the browser must not hijack the gesture
+   for touch scrolling; the class is toggled from the pointer layer. */
+.penelopa-canvas-scroll.penelopa-dragging,
+.penelopa-canvas.penelopa-dragging {
+    touch-action: none;
+}
+
+/* The canvas fills its viewport; zoom/pan are handled by ViewTransform, so
+   there is no content-sized scroll area. The surrounding scroll container
+   only guards against transient layout overflow while the side docks
+   resize. Pointer coordinates are measured from the inner canvas content
+   origin, so borders and scrolling cannot offset hit testing. */
+.penelopa-canvas {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    background: var(--penelopa-surface);
+    position: relative;
+}
+
+.penelopa-canvas-fit {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 10;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--penelopa-border);
+    border-radius: 4px;
+    background: var(--penelopa-surface);
+    color: var(--penelopa-ink);
+    cursor: pointer;
+    opacity: 0.85;
+}
+
+.penelopa-canvas-fit:hover {
+    background: var(--penelopa-hover);
+    opacity: 1;
+}
+
+/* The canvas is a focusable keyboard surface; keep the focus ring visible
+   around the drawing area without changing its layout. */
+.penelopa-canvas:focus-visible {
+    outline: var(--atlas-focus-ring-width, 2px) solid var(--penelopa-accent);
+    outline-offset: -2px;
+}
+
+.penelopa-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+    pointer-events: none;
+}
+
+.penelopa-canvas canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    box-sizing: border-box;
+    background: #000;
+    border: 1px solid var(--penelopa-border);
+    border-radius: var(--atlas-radius, 0.375rem);
+    box-shadow: 0 0.125rem 0.5rem color-mix(in srgb, var(--penelopa-ink) 14%, transparent);
+}
+
+/* ---- 6.4 Narrow-viewport compact side panels ---- */
+
+/* Below 900px the initial proportional tracks can be narrower than the 160px
+   splitter minimum. Tighten padding and control sizes so the add/align/group/
+   property controls still fit without horizontal clipping while the canvas
+   keeps the remaining width. */
+@media (max-width: 900px) {
+    .penelopa-tools,
+    .penelopa-tree,
+    .penelopa-properties {
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    .penelopa-tools h3 {
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .penelopa-tool-section {
+        margin-bottom: 0.75rem;
+    }
+
+    .penelopa-tool-button {
+        padding: 0.25rem 0.45rem;
+        font-size: 0.75rem;
+    }
+
+    .penelopa-shell .atlas-v2-tab-strip {
+        padding-inline: 0.2rem;
+    }
+
+    .penelopa-shell .atlas-v2-tab-strip [role="tab"] {
+        max-width: 8rem;
+        padding: 0.25rem 0.45rem;
+        font-size: 0.8rem;
+    }
+
+    .penelopa-properties-title {
+        margin-bottom: 0.45rem;
+    }
+
+    .penelopa-properties-hint {
+        margin-bottom: 0.45rem;
+    }
+
+    .penelopa-properties .penelopa-prop-label {
+        font-size: 0.68rem;
+    }
+
+    .penelopa-properties .penelopa-prop-input {
+        padding: 0.3rem 0.4rem;
+    }
+}
+
+/* ---- 6.5 Scrollbars ---- */
+
+/* Thin, quiet scrollbars for the editor panels; colors follow the theme. */
+.penelopa-canvas-scroll,
+.penelopa-tools,
+.penelopa-tree,
+.penelopa-properties {
+    scrollbar-width: thin;
+    scrollbar-color: var(--penelopa-scrollbar-thumb) transparent;
+}
+
+.penelopa-canvas-scroll::-webkit-scrollbar,
+.penelopa-tools::-webkit-scrollbar,
+.penelopa-tree::-webkit-scrollbar,
+.penelopa-properties::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.penelopa-canvas-scroll::-webkit-scrollbar-track,
+.penelopa-tools::-webkit-scrollbar-track,
+.penelopa-tree::-webkit-scrollbar-track,
+.penelopa-properties::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.penelopa-canvas-scroll::-webkit-scrollbar-thumb,
+.penelopa-tools::-webkit-scrollbar-thumb,
+.penelopa-tree::-webkit-scrollbar-thumb,
+.penelopa-properties::-webkit-scrollbar-thumb {
+    background: var(--penelopa-scrollbar-thumb);
+    border: 2px solid transparent;
+    border-radius: 5px;
+    background-clip: padding-box;
+}
+
+.penelopa-canvas-scroll::-webkit-scrollbar-thumb:hover,
+.penelopa-tools::-webkit-scrollbar-thumb:hover,
+.penelopa-tree::-webkit-scrollbar-thumb:hover,
+.penelopa-properties::-webkit-scrollbar-thumb:hover {
+    background: var(--penelopa-scrollbar-thumb-hover);
+    border: 2px solid transparent;
+    border-radius: 5px;
+    background-clip: padding-box;
+}
+
+.penelopa-canvas-scroll::-webkit-scrollbar-corner,
+.penelopa-tools::-webkit-scrollbar-corner,
+.penelopa-tree::-webkit-scrollbar-corner,
+.penelopa-properties::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ---- 7. Base document rules ---- */
+
+a {
+    color: var(--penelopa-accent);
+}

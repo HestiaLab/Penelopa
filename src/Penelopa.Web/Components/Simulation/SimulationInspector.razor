@@ -1,0 +1,382 @@
+@namespace Penelopa.Web.Components.Simulation
+@using System.Globalization
+@using Penelopa.Core.Primitives
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+
+<div class="penelopa-properties penelopa-simulation-inspector">
+    @if (Primitive is null)
+    {
+        <p class="penelopa-properties-empty">
+            Select a primitive to inspect its properties.
+        </p>
+    }
+    else
+    {
+        <div class="penelopa-properties-title">@Primitive.Name.Value</div>
+        <p class="penelopa-simulation-hint">
+            @(CanEdit ? "Edit keyframes while paused or ready." : "Playback is read-only.")
+        </p>
+        <p class="penelopa-simulation-hint">Values are relative to the parent.</p>
+
+        @if (_operationError is not null)
+        {
+            <p class="penelopa-simulation-inline-error" role="alert">@_operationError</p>
+        }
+
+        <ul class="penelopa-simulation-property-list">
+            @foreach (var property in FloatProperties)
+            {
+                var track = FindTrack(property.Name);
+                var selected = SelectedProperty == property.Name;
+                <li class="penelopa-simulation-property @(selected ? "selected" : string.Empty)">
+                    <button type="button"
+                            class="penelopa-simulation-property-button"
+                            disabled="@(track is null)"
+                            aria-pressed="@(selected ? "true" : "false")"
+                            @onclick="() => SelectTrackAsync(property.Name)">
+                        <span class="penelopa-simulation-property-name">@property.Name</span>
+                        <SimulationCurrentValue Channel="@Channel"
+                                                TrackKey="@track?.Key"
+                                                FallbackValue="@property.Value" />
+                    </button>
+                    @if (track is null)
+                    {
+                        <button type="button"
+                                class="penelopa-tool-button"
+                                aria-label="@($"Animate {property.Name}")"
+                                disabled="@(!CanEdit)"
+                                @onclick="() => AddTrackAsync(property)">Animate</button>
+                    }
+                    else
+                    {
+                        <span class="penelopa-simulation-property-meta">
+                            @track.Keyframes.Count keyframe(s)
+                        </span>
+                    }
+                </li>
+            }
+        </ul>
+
+        @if (SelectedTrack is { } selectedTrack)
+        {
+            <section class="penelopa-simulation-track-editor">
+                <header class="penelopa-simulation-track-header">
+                    <h3 class="penelopa-simulation-subtitle">@selectedTrack.PropertyName</h3>
+                    <div class="penelopa-simulation-track-actions">
+                        <button type="button"
+                                class="penelopa-tool-button"
+                                disabled="@(!CanEdit)"
+                                @onclick="AddKeyframeAsync">Add keyframe</button>
+                        <button type="button"
+                                class="penelopa-tool-button"
+                                disabled="@(!CanEdit)"
+                                @onclick="RemoveTrack">Remove track</button>
+                    </div>
+                </header>
+
+                <table class="penelopa-simulation-keyframe-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Time</th>
+                            <th scope="col">Value</th>
+                            <th scope="col">Interpolation</th>
+                            <th scope="col">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var index = 0; index < selectedTrack.Keyframes.Count; index++)
+                        {
+                            var rowIndex = index;
+                            var keyframeRow = selectedTrack.Keyframes[rowIndex];
+                            var isSelected = SelectedKeyframeIndex == rowIndex;
+                            <tr class="@(isSelected ? "selected" : string.Empty)">
+                                <td>@(rowIndex + 1)</td>
+                                <td>
+                                    <button type="button"
+                                            class="penelopa-simulation-keyframe-select"
+                                            aria-pressed="@(isSelected ? "true" : "false")"
+                                            @onclick="() => SelectKeyframeAsync(selectedTrack, rowIndex)">
+                                        @FormatTime(keyframeRow.Time)
+                                    </button>
+                                </td>
+                                <td>@FormatValue(keyframeRow.Value)</td>
+                                <td>@FormatInterpolation(keyframeRow.Interpolation)</td>
+                                <td class="penelopa-simulation-keyframe-actions">
+                                    <button type="button"
+                                            class="penelopa-tool-button"
+                                            aria-label="@($"Go to keyframe {rowIndex + 1}")"
+                                            @onclick="() => GoToKeyframeAsync(selectedTrack, rowIndex)">Go to</button>
+                                    <button type="button"
+                                            class="penelopa-tool-button"
+                                            aria-label="@($"Delete keyframe {rowIndex + 1}")"
+                                            disabled="@(!CanEdit)"
+                                            @onclick="() => RemoveKeyframe(rowIndex)">Delete</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                @if (SelectedKeyframe is { } selectedKeyframe)
+                {
+                    <SimulationKeyframeEditor @key="SelectedKeyframe"
+                                              PrimitiveId="@Primitive.Id"
+                                              PropertyName="@selectedTrack.PropertyName"
+                                              KeyframeIndex="@SelectedKeyframeIndex!.Value"
+                                              Keyframe="@selectedKeyframe"
+                                              IsLast="@(SelectedKeyframeIndex == selectedTrack.Keyframes.Count - 1)"
+                                              CanEdit="@CanEdit"
+                                              OnGoToRequested="@GoToSelectedKeyframeAsync" />
+                }
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private IReadOnlyList<SimulationTrack> _tracks = Array.Empty<SimulationTrack>();
+    private SimulationConfig? _lastConfig;
+    private Guid? _lastPrimitiveId;
+    private string? _operationError;
+
+    [Parameter]
+    public Primitive? Primitive { get; set; }
+
+    [Parameter]
+    public SimulationConfig Config { get; set; } = SimulationConfig.Empty;
+
+    [Parameter, EditorRequired]
+    public SimulationReadoutChannel Channel { get; set; } = null!;
+
+    [Parameter]
+    public string? SelectedProperty { get; set; }
+
+    [Parameter]
+    public int? SelectedKeyframeIndex { get; set; }
+
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelectTrack { get; set; }
+
+    [Parameter]
+    public EventCallback<SimulationKeyframeSelection> OnSelectKeyframe { get; set; }
+
+    [Parameter]
+    public EventCallback<double> OnSeekRequested { get; set; }
+
+    [Inject]
+    private SimulationConfigStore ConfigStore { get; set; } = null!;
+
+    private IEnumerable<FloatPropValue> FloatProperties
+        => Primitive?.Props.OfType<FloatPropValue>()
+            ?? Enumerable.Empty<FloatPropValue>();
+
+    private SimulationTrack? SelectedTrack
+        => Primitive is not null
+            && SelectedProperty is not null
+                ? FindTrack(SelectedProperty)
+                : null;
+
+    private SimulationKeyframe? SelectedKeyframe
+        => SelectedTrack is { } track
+            && SelectedKeyframeIndex is { } index
+            && index >= 0
+            && index < track.Keyframes.Count
+                ? track.Keyframes[index]
+                : null;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastPrimitiveId != Primitive?.Id || !ReferenceEquals(_lastConfig, Config))
+        {
+            _lastPrimitiveId = Primitive?.Id;
+            _lastConfig = Config;
+            _tracks = Primitive is null
+                ? Array.Empty<SimulationTrack>()
+                : Config.Tracks
+                    .Where(track => track.PrimitiveId == Primitive.Id)
+                    .ToArray();
+            _operationError = null;
+        }
+    }
+
+    private SimulationTrack? FindTrack(string propertyName)
+        => _tracks.FirstOrDefault(track =>
+            string.Equals(track.PropertyName, propertyName, StringComparison.Ordinal));
+
+    private FloatPropValue? FindFloatProperty(string propertyName)
+        => Primitive?.Props
+            .OfType<FloatPropValue>()
+            .FirstOrDefault(property =>
+                string.Equals(property.Name, propertyName, StringComparison.Ordinal));
+
+    private double CurrentTime => Channel.Current?.CurrentTime ?? 0d;
+
+    private async Task SelectTrackAsync(string propertyName)
+    {
+        if (FindTrack(propertyName) is null)
+        {
+            return;
+        }
+
+        await OnSelectTrack.InvokeAsync(propertyName);
+    }
+
+    private async Task AddTrackAsync(FloatPropValue property)
+    {
+        if (Primitive is null || !CanEdit)
+        {
+            return;
+        }
+
+        var time = CurrentTime;
+        if (!ConfigStore.TryAddTrack(
+            Primitive.Id,
+            property.Name,
+            time,
+            property.Value,
+            out var error))
+        {
+            _operationError = error;
+            return;
+        }
+
+        _operationError = null;
+        await OnSelectTrack.InvokeAsync(property.Name);
+    }
+
+    private async Task AddKeyframeAsync()
+    {
+        if (Primitive is null || SelectedTrack is not { } track || !CanEdit)
+        {
+            return;
+        }
+
+        var property = FindFloatProperty(track.PropertyName);
+        if (property is null)
+        {
+            return;
+        }
+
+        var time = CurrentTime;
+        if (!ConfigStore.TrySetKeyframeValue(
+            Primitive.Id,
+            track.PropertyName,
+            time,
+            property.Value,
+            out var error))
+        {
+            _operationError = error;
+            return;
+        }
+
+        _operationError = null;
+        var updated = FindTrack(track.PropertyName);
+        if (updated is not null)
+        {
+            var index = FindKeyframeIndexAt(updated, time);
+            if (index >= 0)
+            {
+                await OnSelectKeyframe.InvokeAsync(
+                    new SimulationKeyframeSelection(track.PropertyName, index));
+                return;
+            }
+        }
+
+        await OnSelectTrack.InvokeAsync(track.PropertyName);
+    }
+
+    private void RemoveTrack()
+    {
+        if (Primitive is null || SelectedTrack is not { } track || !CanEdit)
+        {
+            return;
+        }
+
+        if (!ConfigStore.TryRemoveTrack(
+            Primitive.Id,
+            track.PropertyName,
+            out var error))
+        {
+            _operationError = error;
+            return;
+        }
+
+        _operationError = null;
+    }
+
+    private void RemoveKeyframe(int index)
+    {
+        if (Primitive is null || SelectedTrack is not { } track || !CanEdit)
+        {
+            return;
+        }
+
+        if (!ConfigStore.TryRemoveKeyframe(
+            Primitive.Id,
+            track.PropertyName,
+            index,
+            out var error))
+        {
+            _operationError = error;
+            return;
+        }
+
+        _operationError = null;
+    }
+
+    private async Task SelectKeyframeAsync(SimulationTrack track, int index)
+    {
+        await OnSelectKeyframe.InvokeAsync(
+            new SimulationKeyframeSelection(track.PropertyName, index));
+    }
+
+    private async Task GoToKeyframeAsync(SimulationTrack track, int index)
+    {
+        await OnSeekRequested.InvokeAsync(track.Keyframes[index].Time);
+    }
+
+    private async Task GoToSelectedKeyframeAsync()
+    {
+        if (SelectedTrack is { } track && SelectedKeyframeIndex is { } index)
+        {
+            await GoToKeyframeAsync(track, index);
+        }
+    }
+
+    private static int FindKeyframeIndexAt(SimulationTrack track, double time)
+    {
+        for (var index = 0; index < track.Keyframes.Count; index++)
+        {
+            if (Math.Abs(track.Keyframes[index].Time - time)
+                <= SimulationLimits.SameTimeToleranceSeconds)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string FormatTime(double time)
+        => time.ToString("F3", CultureInfo.InvariantCulture) + "s";
+
+    private static string FormatValue(float value)
+        => value.ToString(CultureInfo.InvariantCulture);
+
+    private static string FormatInterpolation(InterpolationKind interpolation)
+        => interpolation switch
+        {
+            InterpolationKind.Linear => "Linear",
+            InterpolationKind.EaseIn => "Ease in",
+            InterpolationKind.EaseOut => "Ease out",
+            InterpolationKind.EaseInOut => "Ease in/out",
+            InterpolationKind.Step => "Step",
+            InterpolationKind.CubicBezier => "Cubic bezier",
+            _ => "Unknown",
+        };
+}

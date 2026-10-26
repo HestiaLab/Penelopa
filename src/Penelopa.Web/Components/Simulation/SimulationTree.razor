@@ -1,0 +1,68 @@
+@namespace Penelopa.Web.Components.Simulation
+@using Microsoft.AspNetCore.Components.Rendering
+@using Penelopa.Core.Primitives
+@using Penelopa.Core.Simulation
+
+<div class="penelopa-tree">
+    @if (Roots.Count == 0)
+    {
+        <p class="penelopa-tree-empty">No primitives yet. Return to the editor to add one.</p>
+    }
+    else
+    {
+        <ul class="penelopa-tree-list">
+            @foreach (var primitive in Roots)
+            {
+                @RenderNode(primitive, 0)
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Primitive> Roots { get; set; } = Array.Empty<Primitive>();
+
+    [Parameter]
+    public Guid? SelectedId { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<SimulationTrack> Tracks { get; set; } = Array.Empty<SimulationTrack>();
+
+    [Parameter]
+    public EventCallback<Primitive> OnSelect { get; set; }
+
+    private bool IsSelected(Primitive primitive) => SelectedId == primitive.Id;
+
+    private bool HasAnimation(Primitive primitive)
+        => Tracks.Any(track => track.PrimitiveId == primitive.Id);
+
+    private RenderFragment RenderNode(Primitive node, int depth) => __builder =>
+    {
+        <li>
+            <button type="button"
+                    class="penelopa-tree-item @(IsSelected(node) ? "selected" : string.Empty)"
+                    aria-label="@($"{node.Name.Value}{(HasAnimation(node) ? ", has animation" : string.Empty)}")"
+                    aria-pressed="@(IsSelected(node) ? "true" : "false")"
+                    style="padding-left: @(12 + depth * 16)px"
+                    @onclick="@(() => OnSelect.InvokeAsync(node))">
+                <span>@node.Name.Value</span>
+                @if (HasAnimation(node))
+                {
+                    <span class="penelopa-simulation-badge"
+                          aria-hidden="true"
+                          title="Has animation">&#9679;</span>
+                }
+            </button>
+        </li>
+        if (node is Container container && container.Children.Count > 0)
+        {
+            <ul class="penelopa-tree-children">
+                @foreach (var child in container.Children)
+                {
+                    @RenderNode(child, depth + 1)
+                }
+            </ul>
+        }
+    };
+}

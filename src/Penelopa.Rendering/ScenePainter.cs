@@ -57,13 +57,16 @@ internal sealed class ScenePainter : IDisposable
 
     private bool _disposed;
 
-    /// <summary>绘制当前帧；调用方负责清空两张画布。</summary>
+    /// <summary>
+    /// 绘制当前帧；调用方负责清空需要绘制的画布。命中画布/缓冲区为 null 时
+    /// 只绘制可见内容（仿真页的只读路径），不登记颜色键。
+    /// </summary>
     public void Paint(
         SKCanvas canvas,
-        SKCanvas hitCanvas,
+        SKCanvas? hitCanvas,
         ViewTransform view,
         IReadOnlyList<Primitive> primitives,
-        HitTestBuffer hitBuffer)
+        HitTestBuffer? hitBuffer)
     {
         // 坐标轴在屏幕空间绘制：缩放/平移只移动原点，轴线始终跨越整个可见视口。
         // 先于图元绘制以保持轴位于内容下方，且不进入命中缓冲区。
@@ -78,13 +81,20 @@ internal sealed class ScenePainter : IDisposable
         }
 
         canvas.Save();
-        hitCanvas.Save();
+        if (hitCanvas is not null)
+        {
+            hitCanvas.Save();
+        }
+
         try
         {
             view.ApplyTo(canvas);
-            view.ApplyTo(hitCanvas);
+            if (hitCanvas is not null)
+            {
+                view.ApplyTo(hitCanvas);
+            }
 
-            hitBuffer.BeginFrame();
+            hitBuffer?.BeginFrame();
             foreach (var primitive in primitives)
             {
                 DrawNode(canvas, hitCanvas, primitive, hitBuffer);
@@ -93,7 +103,10 @@ internal sealed class ScenePainter : IDisposable
         finally
         {
             canvas.Restore();
-            hitCanvas.Restore();
+            if (hitCanvas is not null)
+            {
+                hitCanvas.Restore();
+            }
         }
     }
 
@@ -101,32 +114,53 @@ internal sealed class ScenePainter : IDisposable
     /// 绘制图元树节点。容器把变换同时施加到可见与命中画布，递归后恢复；
     /// 渲染顺序即 Z 序（后绘制覆盖先绘制）。
     /// </summary>
-    private void DrawNode(SKCanvas canvas, SKCanvas hitCanvas, Primitive node, HitTestBuffer hitBuffer)
+    private void DrawNode(
+        SKCanvas canvas,
+        SKCanvas? hitCanvas,
+        Primitive node,
+        HitTestBuffer? hitBuffer)
     {
         if (node is Container container)
         {
             var matrix = ToSkMatrix(container.LocalTransform);
             canvas.Save();
-            hitCanvas.Save();
+            if (hitCanvas is not null)
+            {
+                hitCanvas.Save();
+            }
+
             canvas.Concat(ref matrix);
-            hitCanvas.Concat(ref matrix);
+            if (hitCanvas is not null)
+            {
+                hitCanvas.Concat(ref matrix);
+            }
+
             foreach (var child in container.Children)
             {
                 DrawNode(canvas, hitCanvas, child, hitBuffer);
             }
 
             canvas.Restore();
-            hitCanvas.Restore();
+            if (hitCanvas is not null)
+            {
+                hitCanvas.Restore();
+            }
+
             return;
         }
 
+        var hasHit = hitCanvas is not null && hitBuffer is not null;
         switch (node)
         {
             case Circle circle:
                 _visibleFill.Color = new SKColor(circle.Color.Value);
                 canvas.DrawCircle(circle.CenterX.Value, circle.CenterY.Value, circle.Radius.Value, _visibleFill);
-                _hitFill.Color = ToHitColor(hitBuffer.Register(circle));
-                hitCanvas.DrawCircle(circle.CenterX.Value, circle.CenterY.Value, circle.Radius.Value, _hitFill);
+                if (hasHit)
+                {
+                    _hitFill.Color = ToHitColor(hitBuffer!.Register(circle));
+                    hitCanvas!.DrawCircle(circle.CenterX.Value, circle.CenterY.Value, circle.Radius.Value, _hitFill);
+                }
+
                 break;
 
             case Rectangle rectangle:
@@ -137,8 +171,12 @@ internal sealed class ScenePainter : IDisposable
                     rectangle.PosY.Value + rectangle.Height.Value);
                 _visibleFill.Color = new SKColor(rectangle.Color.Value);
                 canvas.DrawRect(rect, _visibleFill);
-                _hitFill.Color = ToHitColor(hitBuffer.Register(rectangle));
-                hitCanvas.DrawRect(rect, _hitFill);
+                if (hasHit)
+                {
+                    _hitFill.Color = ToHitColor(hitBuffer!.Register(rectangle));
+                    hitCanvas!.DrawRect(rect, _hitFill);
+                }
+
                 break;
 
             case Triangle triangle:
@@ -149,8 +187,12 @@ internal sealed class ScenePainter : IDisposable
                 _trianglePath.Close();
                 _visibleFill.Color = new SKColor(triangle.Color.Value);
                 canvas.DrawPath(_trianglePath, _visibleFill);
-                _hitFill.Color = ToHitColor(hitBuffer.Register(triangle));
-                hitCanvas.DrawPath(_trianglePath, _hitFill);
+                if (hasHit)
+                {
+                    _hitFill.Color = ToHitColor(hitBuffer!.Register(triangle));
+                    hitCanvas!.DrawPath(_trianglePath, _hitFill);
+                }
+
                 break;
         }
     }

@@ -31,7 +31,7 @@ jobs:
       - name: Install wasm-tools workload
         run: dotnet workload install wasm-tools
 
-      # Penelopa.csproj's BuildTypeScript target compiles the committed TS when
+      # Penelopa.Web.csproj's BuildTypeScript target compiles the committed TS when
       # the local npm toolchain is present. Restore it here so the deployed
       # bundle is compiled from source with the lock-pinned tsc 5.9.3; a local
       # build without node_modules falls back to the committed JS.
@@ -46,7 +46,7 @@ jobs:
 
       - name: Publish Penelopa
         run: |
-          dotnet publish src/Penelopa/Penelopa.csproj \
+          dotnet publish src/Penelopa.Web/Penelopa.Web.csproj \
             --configuration Release \
             --no-restore \
             --output publish/site

@@ -1,0 +1,962 @@
+@page "/simulation"
+@using System.Diagnostics
+@using Microsoft.JSInterop
+@using Penelopa.Web.Components.Simulation
+@using Penelopa.Core.Alignment
+@using Penelopa.Core.Primitives
+@using Penelopa.Core.Services
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+@implements IAsyncDisposable
+
+<PageTitle>Simulation — Penelopa</PageTitle>
+
+<div class="penelopa-simulation">
+    <header class="penelopa-simulation-topbar">
+        <div class="penelopa-simulation-nav">
+            <button type="button"
+                    class="penelopa-tool-button penelopa-simulation-back"
+                    @onclick="BackToEditorAsync">Back to editor</button>
+            <h1 class="penelopa-simulation-title" tabindex="-1">Simulation</h1>
+            <button type="button"
+                    class="penelopa-tool-button"
+                    disabled="@(!CanSave || _pendingDormantSave)"
+                    aria-describedby="simulation-save-hint"
+                    title="@(CanSave ? "Save document and animation" : "Stop playback to save")"
+                    @onclick="SaveAsync">Save</button>
+            <span id="simulation-save-hint" class="penelopa-visually-hidden">
+                @(CanSave
+                    ? "Saves the document and active animation tracks."
+                    : "Stop playback to save the document.")
+            </span>
+        </div>
+        <SimulationTransport State="@RuntimeState"
+                             CanPlay="@CanPlay"
+                             CanStop="@CanStop"
+                             CanLoop="@CanLoop"
+                             CanStep="@CanStep"
+                             CanUndo="@CanUndoConfig"
+                             CanRedo="@CanRedoConfig"
+                             Loop="@LoopEnabled"
+                             Channel="@_readoutChannel"
+                             OnPlay="@PlayAsync"
+                             OnPause="@PauseAsync"
+                             OnStop="@StopAsync"
+                             OnStepBack="@StepBackAsync"
+                             OnStepForward="@StepForwardAsync"
+                             OnToggleLoop="@ToggleLoop"
+                             OnUndo="@UndoConfig"
+                             OnRedo="@RedoConfig" />
+    </header>
+
+    @if (_errorMessage is not null)
+    {
+        <p class="penelopa-simulation-error" role="alert">@_errorMessage</p>
+    }
+    <SimulationIssueSummary Issues="@_blockingIssues" />
+    @if (_saveMessage is not null)
+    {
+        <p class="penelopa-simulation-save-message @(_saveError ? "is-error" : string.Empty)"
+           role="@(_saveError ? "alert" : "status")">@_saveMessage</p>
+    }
+    @if (_pendingDormantSave)
+    {
+        <div class="penelopa-simulation-save-confirm" role="alert">
+            <span>@_dormantTracks.Count inactive track(s) will not be saved.</span>
+            <div class="penelopa-simulation-save-confirm-actions">
+                <button type="button"
+                        class="penelopa-tool-button"
+                        @onclick="SaveAsync">Save active only</button>
+                <button type="button"
+                        class="penelopa-tool-button"
+                        @onclick="CancelDormantSave">Cancel save</button>
+            </div>
+        </div>
+    }
+    @if (_reducedMotion)
+    {
+        <p class="penelopa-simulation-hint penelopa-simulation-reduced-motion">
+            Reduced motion is enabled in your browser. Playback still requires pressing Play.
+        </p>
+    }
+    @if (!CanPlay && _roots.Count > 0 && _errorMessage is null)
+    {
+        <p class="penelopa-simulation-hint penelopa-simulation-empty-hint">
+            No playable animation tracks. Add or fix tracks before playing.
+        </p>
+    }
+    @if (_dormantTracks.Count > 0)
+    {
+        <SimulationDormantTracks Tracks="@_dormantTracks"
+                                 CanEdit="@CanEditConfig"
+                                 OnRemove="@RemoveDormantTrack"
+                                 OnRemoveAll="@RemoveDormantTracks" />
+    }
+
+    <div class="penelopa-simulation-body">
+        <aside class="penelopa-simulation-panel penelopa-simulation-tree-panel"
+               aria-label="Simulation primitives">
+            <SimulationTree Roots="@_roots"
+                            SelectedId="@_selectedId"
+                            Tracks="@ConfigStore.Config.Tracks"
+                            OnSelect="@SelectPrimitive" />
+        </aside>
+
+        <section class="penelopa-simulation-canvas-panel" aria-label="Simulation canvas">
+            <SimulationCanvas @ref="_canvas"
+                              Roots="@_roots"
+                              FitBounds="@_fitBounds"
+                              FitVersion="@_fitVersion"
+                              CanFit="@CanFit"
+                              RenderLoopEnabled="@(RuntimeState == SimulationState.Playing)"
+                              OnFitRequested="@FitSimulation" />
+            @if (_roots.Count == 0)
+            {
+                <p class="penelopa-simulation-canvas-empty">
+                    No primitives to preview.
+                </p>
+            }
+        </section>
+
+        <aside class="penelopa-simulation-panel penelopa-simulation-inspector-panel"
+               aria-label="Simulation inspector">
+            <SimulationInspector Primitive="@SelectedPrimitive"
+                                 Config="@ConfigStore.Config"
+                                 Channel="@_readoutChannel"
+                                 SelectedProperty="@_selectedProperty"
+                                 SelectedKeyframeIndex="@_selectedKeyframeIndex"
+                                 CanEdit="@CanEditConfig"
+                                 OnSelectTrack="@SelectTrack"
+                                 OnSelectKeyframe="@SelectKeyframe"
+                                 OnSeekRequested="@SeekToTimeAsync" />
+        </aside>
+    </div>
+
+    <footer class="penelopa-simulation-timeline" aria-label="Simulation timeline">
+        <SimulationTimeline Primitive="@SelectedPrimitive"
+                            Config="@ConfigStore.Config"
+                            Duration="@TimelineDuration"
+                            SelectedProperty="@_selectedProperty"
+                            SelectedKeyframeIndex="@_selectedKeyframeIndex"
+                            CanEdit="@CanEditConfig"
+                            Channel="@_readoutChannel"
+                            OnSelectKeyframe="@SelectKeyframe"
+                            OnSeekRequested="@SeekToTimeAsync" />
+    </footer>
+</div>
+
+@code {
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private readonly SimulationReadoutChannel _readoutChannel = new();
+
+    private IReadOnlyList<Primitive> _roots = Array.Empty<Primitive>();
+    private SimulationPrimitiveIndex? _index;
+    private SimulationRuntime? _runtime;
+    private Box? _fitBounds;
+    private int _fitVersion;
+    private Guid? _selectedId;
+    private string? _selectedProperty;
+    private int? _selectedKeyframeIndex;
+    private double? _selectedKeyframeTime;
+    private int _selectedTrackKeyframeCount;
+    private IReadOnlyList<SimulationTrack> _dormantTracks = Array.Empty<SimulationTrack>();
+    private SimulationCanvas? _canvas;
+    private DotNetObjectReference<SimulationPage>? _dotNetRef;
+    private IJSObjectReference? _frameLoop;
+    private IJSObjectReference? _keyboardHandle;
+    private double _lastReadoutAt;
+    private int _frameCount;
+
+    private bool _disposed;
+    private bool _reducedMotion;
+    private bool _pendingDormantSave;
+    private bool _saveError;
+    private string? _errorMessage;
+    private IReadOnlyList<SimulationValidationIssue> _blockingIssues =
+        Array.Empty<SimulationValidationIssue>();
+    private string? _saveMessage;
+
+    [Inject]
+    private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    [Inject]
+    private SimulationConfigStore ConfigStore { get; set; } = null!;
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = null!;
+
+    [Inject]
+    private DocumentStorage DocumentStorage { get; set; } = null!;
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = null!;
+
+    private double NowSeconds => _clock.Elapsed.TotalSeconds;
+
+    private SimulationState RuntimeState
+        => _runtime?.State ?? SimulationState.Ready;
+
+    private bool CanPlay => _runtime?.CanPlay == true;
+
+    private bool CanStop => RuntimeState != SimulationState.Ready;
+
+    private bool CanLoop => (_runtime?.Duration ?? 0d) > 0d;
+
+    private bool LoopEnabled => _runtime?.Loop ?? false;
+
+    private bool CanFit => RuntimeState != SimulationState.Playing;
+
+    private bool CanEditConfig => RuntimeState != SimulationState.Playing;
+
+    private bool CanUndoConfig => CanEditConfig && ConfigStore.CanUndo;
+
+    private bool CanRedoConfig => CanEditConfig && ConfigStore.CanRedo;
+
+    private bool CanStep => CanPlay;
+
+    private double TimelineDuration => _runtime?.Duration ?? 0d;
+
+    private bool CanSave => RuntimeState == SimulationState.Ready;
+
+    private Primitive? SelectedPrimitive
+        => _selectedId is { } id
+            && _index is not null
+            && _index.TryGetPrimitive(id, out var primitive)
+                ? primitive
+                : null;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        _roots = PrimitiveService.GetAll();
+        _index = SimulationPrimitiveIndex.Create(_roots);
+        ConfigStore.ClearHistory();
+        ConfigStore.Changed += HandleConfigChanged;
+        Navigation.LocationChanged += HandleLocationChanged;
+
+        var editorSelection = PrimitiveService.GetSelection();
+        if (editorSelection.Count == 1
+            && _index.TryGetPrimitive(editorSelection[0].Id, out _))
+        {
+            _selectedId = editorSelection[0].Id;
+        }
+
+        _runtime = new SimulationRuntime(_roots, ConfigStore.Config);
+        _fitBounds = SimulationBoundsEstimator.Estimate(_roots, ConfigStore.Config);
+        RefreshDormantTracks();
+        _readoutChannel.Publish(_runtime.CreateReadout());
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _reducedMotion = await JS.InvokeAsync<bool>(
+                "penelopa.prefersReducedMotion");
+        }
+        catch (Exception ex) when (ex is JSException
+            or JSDisconnectedException
+            or InvalidOperationException)
+        {
+            _reducedMotion = false;
+        }
+
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            if (_keyboardHandle is null)
+            {
+                _keyboardHandle = await JS.InvokeAsync<IJSObjectReference>(
+                    "penelopa.attachSimulationKeyboard",
+                    _dotNetRef);
+            }
+        }
+        catch (Exception ex) when (ex is JSException
+            or JSDisconnectedException
+            or InvalidOperationException)
+        {
+            // 快捷键不可用时仍保留按钮操作
+        }
+
+        if (!_disposed)
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void SelectPrimitive(Primitive primitive)
+    {
+        _selectedId = primitive.Id;
+        _selectedProperty = null;
+        ClearKeyframeSelection();
+        StateHasChanged();
+    }
+
+    private void SelectTrack(string propertyName)
+    {
+        _selectedProperty = propertyName;
+        ClearKeyframeSelection();
+        StateHasChanged();
+    }
+
+    private void SelectKeyframe(SimulationKeyframeSelection selection)
+    {
+        _selectedProperty = selection.PropertyName;
+        var track = FindSelectedTrack();
+        if (track is null
+            || selection.Index < 0
+            || selection.Index >= track.Keyframes.Count)
+        {
+            ClearKeyframeSelection();
+        }
+        else
+        {
+            _selectedKeyframeIndex = selection.Index;
+            _selectedKeyframeTime = track.Keyframes[selection.Index].Time;
+            _selectedTrackKeyframeCount = track.Keyframes.Count;
+        }
+
+        StateHasChanged();
+    }
+
+    private void FitSimulation()
+    {
+        if (_runtime is null || RuntimeState == SimulationState.Playing)
+        {
+            return;
+        }
+
+        _fitBounds = SimulationBoundsEstimator.Estimate(
+            _roots,
+            ConfigStore.Config);
+        _runtime.ReapplyCurrentFrame();
+        _fitVersion++;
+        _canvas?.Invalidate();
+        StateHasChanged();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanSave || _disposed)
+        {
+            return;
+        }
+
+        if (_dormantTracks.Count > 0 && !_pendingDormantSave)
+        {
+            _pendingDormantSave = true;
+            _saveMessage = null;
+            _saveError = false;
+            StateHasChanged();
+            return;
+        }
+
+        _pendingDormantSave = false;
+        var result = await DocumentStorage.SaveAsync(
+            _roots,
+            PrimitiveService.GetSelection(),
+            ConfigStore.ExportActive());
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (result.Success)
+        {
+            _saveMessage = "Document saved.";
+            _saveError = false;
+        }
+        else
+        {
+            _saveMessage = result.Error ?? "The document could not be saved.";
+            _saveError = true;
+        }
+
+        StateHasChanged();
+    }
+
+    private void CancelDormantSave()
+    {
+        _pendingDormantSave = false;
+        StateHasChanged();
+    }
+
+    private async Task PlayAsync()
+    {
+        if (_runtime is null || _disposed)
+        {
+            return;
+        }
+
+        _pendingDormantSave = false;
+        ClearPlaybackIssues();
+        if (!_runtime.TryPlay(NowSeconds, out var issues))
+        {
+            SetPlaybackError(issues);
+            return;
+        }
+
+        if (!await EnsureFrameLoopAsync())
+        {
+            _runtime.Stop();
+            _blockingIssues = Array.Empty<SimulationValidationIssue>();
+            _canvas?.Invalidate();
+            PublishReadout(force: true);
+            StateHasChanged();
+            return;
+        }
+
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private async Task PauseAsync()
+    {
+        if (_runtime?.State != SimulationState.Playing)
+        {
+            return;
+        }
+
+        _runtime.Pause(NowSeconds);
+        await StopFrameLoopAsync();
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private async Task StopAsync()
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        _runtime.Stop();
+        await StopFrameLoopAsync();
+        ClearPlaybackIssues();
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private void ToggleLoop()
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        ConfigStore.SetLoop(!ConfigStore.Config.Loop);
+    }
+
+    private void HandleConfigChanged()
+    {
+        if (_disposed || _runtime is null)
+        {
+            return;
+        }
+
+        RefreshDormantTracks();
+        ReconcileSelection();
+        if (_pendingDormantSave && _dormantTracks.Count == 0)
+        {
+            // 清理/撤销后已没有需要排除的轨道，恢复普通保存。
+            _pendingDormantSave = false;
+        }
+
+        if (_runtime.State == SimulationState.Playing)
+        {
+            _runtime.SetLoop(ConfigStore.Config.Loop);
+            PublishReadout(force: true);
+            StateHasChanged();
+            return;
+        }
+
+        if (!_runtime.TryUpdateConfig(ConfigStore.Config, out var issues))
+        {
+            SetPlaybackError(issues);
+            return;
+        }
+
+        ClearPlaybackIssues();
+        if (_runtime.State == SimulationState.Ready)
+        {
+            _fitBounds = SimulationBoundsEstimator.Estimate(
+                _roots,
+                ConfigStore.Config);
+            _fitVersion++;
+        }
+
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private void RemoveDormantTracks()
+    {
+        if (!CanEditConfig)
+        {
+            return;
+        }
+
+        ConfigStore.RemoveDormantTracks();
+    }
+
+    private void RemoveDormantTrack(SimulationTrack track)
+    {
+        if (!CanEditConfig)
+        {
+            return;
+        }
+
+        if (!ConfigStore.TryRemoveTrack(
+            track.PrimitiveId,
+            track.PropertyName,
+            out var error))
+        {
+            _errorMessage = error ?? "The inactive track could not be removed.";
+        }
+    }
+
+    private void RefreshDormantTracks()
+        => _dormantTracks = ConfigStore.GetDormantTracks();
+
+    private void ReconcileSelection()
+    {
+        if (SelectedPrimitive is null || _selectedProperty is null)
+        {
+            _selectedProperty = null;
+            ClearKeyframeSelection();
+            return;
+        }
+
+        var track = FindSelectedTrack();
+        if (track is null)
+        {
+            _selectedProperty = null;
+            ClearKeyframeSelection();
+            return;
+        }
+
+        if (_selectedKeyframeIndex is not { } index
+            || _selectedKeyframeTime is not { } anchor)
+        {
+            return;
+        }
+
+        if (index >= 0
+            && index < track.Keyframes.Count
+            && Math.Abs(track.Keyframes[index].Time - anchor)
+                <= SimulationLimits.SameTimeToleranceSeconds)
+        {
+            _selectedTrackKeyframeCount = track.Keyframes.Count;
+            return;
+        }
+
+        var relocated = FindKeyframeAt(track, anchor);
+        if (relocated >= 0)
+        {
+            _selectedKeyframeIndex = relocated;
+            _selectedTrackKeyframeCount = track.Keyframes.Count;
+            return;
+        }
+
+        // 同一个索引在帧数不变时被重新定时（检视器编辑或撤销）：跟随该帧。
+        if (track.Keyframes.Count == _selectedTrackKeyframeCount
+            && index >= 0
+            && index < track.Keyframes.Count)
+        {
+            _selectedKeyframeTime = track.Keyframes[index].Time;
+            return;
+        }
+
+        ClearKeyframeSelection();
+    }
+
+    private SimulationTrack? FindSelectedTrack()
+    {
+        if (SelectedPrimitive is not { } primitive || _selectedProperty is null)
+        {
+            return null;
+        }
+
+        return ConfigStore.Config.Tracks.FirstOrDefault(candidate =>
+            candidate.PrimitiveId == primitive.Id
+            && string.Equals(
+                candidate.PropertyName,
+                _selectedProperty,
+                StringComparison.Ordinal));
+    }
+
+    private static int FindKeyframeAt(SimulationTrack track, double time)
+    {
+        for (var index = 0; index < track.Keyframes.Count; index++)
+        {
+            if (Math.Abs(track.Keyframes[index].Time - time)
+                <= SimulationLimits.SameTimeToleranceSeconds)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private void ClearKeyframeSelection()
+    {
+        _selectedKeyframeIndex = null;
+        _selectedKeyframeTime = null;
+        _selectedTrackKeyframeCount = 0;
+    }
+
+    private async Task SeekToTimeAsync(double time)
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        if (_runtime.State == SimulationState.Playing)
+        {
+            _runtime.Pause(NowSeconds);
+            await StopFrameLoopAsync();
+        }
+
+        if (!_runtime.TrySeek(time, out var issues))
+        {
+            SetPlaybackError(issues);
+            return;
+        }
+
+        ClearPlaybackIssues();
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private async Task StepAsync(double delta)
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        if (_runtime.State == SimulationState.Playing)
+        {
+            _runtime.Pause(NowSeconds);
+            await StopFrameLoopAsync();
+        }
+
+        if (!_runtime.TryStep(delta, out var issues))
+        {
+            SetPlaybackError(issues);
+            return;
+        }
+
+        ClearPlaybackIssues();
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private Task StepBackAsync() => StepAsync(-1d / 60d);
+
+    private Task StepForwardAsync() => StepAsync(1d / 60d);
+
+    private void UndoConfig()
+    {
+        if (_disposed || !CanEditConfig)
+        {
+            return;
+        }
+
+        ConfigStore.Undo();
+    }
+
+    private void RedoConfig()
+    {
+        if (_disposed || !CanEditConfig)
+        {
+            return;
+        }
+
+        ConfigStore.Redo();
+    }
+
+    [JSInvokable]
+    public void OnConfigUndo() => UndoConfig();
+
+    [JSInvokable]
+    public void OnConfigRedo() => RedoConfig();
+
+    [JSInvokable]
+    public int GetPaintCount() => _canvas?.PaintCount ?? 0;
+
+    [JSInvokable]
+    public int GetFrameCount() => _frameCount;
+
+    [JSInvokable]
+    public void OnSimulationLoopError(string message)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _ = HandleRuntimeErrorAsync(new InvalidOperationException(message));
+    }
+
+    [JSInvokable]
+    public void OnSimulationFrame()
+    {
+        if (_disposed
+            || _runtime is null
+            || _runtime.State != SimulationState.Playing)
+        {
+            return;
+        }
+
+        _frameCount++;
+        try
+        {
+            _runtime.Advance(NowSeconds);
+        }
+        catch (Exception ex) when (ex is ArgumentOutOfRangeException
+            or InvalidOperationException
+            or ArithmeticException)
+        {
+            _ = HandleRuntimeErrorAsync(ex);
+            return;
+        }
+
+        _canvas?.Invalidate();
+        PublishReadout();
+
+        if (_runtime.State == SimulationState.Finished)
+        {
+            _ = CompletePlaybackAsync();
+        }
+    }
+
+    [JSInvokable]
+    public void OnSimulationHidden()
+    {
+        if (_disposed || _runtime?.State != SimulationState.Playing)
+        {
+            return;
+        }
+
+        _runtime.Pause(NowSeconds);
+        _ = HandleHiddenAsync();
+    }
+
+    private async Task HandleHiddenAsync()
+    {
+        await StopFrameLoopAsync();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private async Task CompletePlaybackAsync()
+    {
+        await StopFrameLoopAsync();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private async Task HandleRuntimeErrorAsync(Exception exception)
+    {
+        _errorMessage = $"Playback stopped after an error: {exception.Message}";
+        _blockingIssues = Array.Empty<SimulationValidationIssue>();
+        _runtime?.Stop();
+        await StopFrameLoopAsync();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private async Task<bool> EnsureFrameLoopAsync()
+    {
+        if (_frameLoop is not null)
+        {
+            return true;
+        }
+
+        try
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            _frameLoop = await JS.InvokeAsync<IJSObjectReference>(
+                "penelopa.startSimulationLoop",
+                _dotNetRef);
+            return true;
+        }
+        catch (Exception ex) when (ex is JSException
+            or JSDisconnectedException
+            or InvalidOperationException)
+        {
+            _errorMessage = $"Playback could not start: {ex.Message}";
+            return false;
+        }
+    }
+
+    private async Task StopFrameLoopAsync()
+    {
+        var loop = _frameLoop;
+        _frameLoop = null;
+        if (loop is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await loop.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // 页面卸载时 JS 侧可能已不可达
+        }
+    }
+
+    private void PublishReadout(bool force = false)
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        var now = NowSeconds;
+        if (!force && now - _lastReadoutAt < 0.05d)
+        {
+            return;
+        }
+
+        _lastReadoutAt = now;
+        _readoutChannel.Publish(_runtime.CreateReadout());
+    }
+
+    private void SetPlaybackError(
+        IReadOnlyList<SimulationValidationIssue> issues)
+    {
+        if (issues.Count == 0)
+        {
+            _blockingIssues = Array.Empty<SimulationValidationIssue>();
+            _errorMessage = "Playback is not available.";
+        }
+        else
+        {
+            _blockingIssues = issues;
+            _errorMessage = null;
+        }
+
+        StateHasChanged();
+    }
+
+    private void ClearPlaybackIssues()
+    {
+        _blockingIssues = Array.Empty<SimulationValidationIssue>();
+        _errorMessage = null;
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        if (!IsSimulationLocation(args.Location))
+        {
+            EndSession();
+        }
+    }
+
+    private static bool IsSimulationLocation(string location)
+    {
+        if (!Uri.TryCreate(location, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            uri.AbsolutePath.TrimEnd('/'),
+            "/simulation",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 结束会话并恢复基础值；只有真正结束了一次会话才通知编辑器重读，
+    /// 正常帧写入与 Stop 后的重复调用都不会产生通知。
+    /// </summary>
+    private void EndSession()
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        var hadSession = _runtime.State != SimulationState.Ready;
+        _runtime.Stop();
+        if (hadSession)
+        {
+            PrimitiveService.NotifyPrimitivesChanged(_roots);
+        }
+    }
+
+    private async Task BackToEditorAsync()
+    {
+        EndSession();
+        await StopFrameLoopAsync();
+        Navigation.NavigateTo("/");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        // 路由退出时新编辑器可能已经开始渲染；必须在任何 await 之前同步恢复。
+        EndSession();
+        _disposed = true;
+        ConfigStore.Changed -= HandleConfigChanged;
+        Navigation.LocationChanged -= HandleLocationChanged;
+        if (_keyboardHandle is not null)
+        {
+            try
+            {
+                await _keyboardHandle.DisposeAsync();
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // 页面卸载时 JS 侧可能已不可达
+            }
+
+            _keyboardHandle = null;
+        }
+
+        await StopFrameLoopAsync();
+        _runtime?.Stop();
+        _dotNetRef?.Dispose();
+    }
+}

@@ -1,0 +1,29 @@
+@namespace Penelopa.Web.Components.Panels.Props
+@using Penelopa.Core.Primitives
+@inherits PropEditorBase
+
+<div class="penelopa-prop-field">
+    <label class="penelopa-prop-label" for="@FieldId">@PropValue.Name</label>
+    <select id="@FieldId"
+            class="penelopa-prop-input @(Error is null ? string.Empty : "is-invalid")"
+            value="@Text"
+            aria-invalid="@(Error is null ? null : "true")"
+            aria-describedby="@(Error is null ? null : ErrorId)"
+            @onchange="OnChange">
+        @if (HasConflict)
+        {
+            <option value="" disabled>Multiple values</option>
+        }
+        <option value="true">True</option>
+        <option value="false">False</option>
+    </select>
+    @if (Error is not null)
+    {
+        <div id="@ErrorId" class="penelopa-prop-error" role="alert">@Error</div>
+    }
+</div>
+
+@code {
+    protected override string Format(PropValue property)
+        => ((BoolPropValue)property).Value ? "true" : "false";
+}

@@ -1,0 +1,74 @@
+@namespace Penelopa.Web.Components
+@implements IAsyncDisposable
+
+@* Penelopa workspace: Atlas dockable layout hosting the four editor panes.
+   The layout tree is built programmatically (PenelopaWorkspaceDefinition) so
+   this markup stays focused on content routing; the top toolbar and status
+   bar are supplied through the host slots. *@
+
+<section class="penelopa-shell" aria-label="Penelopa primitive alignment editor">
+    <AtlasWorkspaceHost Workspace="@_workspace"
+                        WorkspaceOwnership="WorkspaceOwnership.External"
+                        EnableInteractions="true">
+        <TopToolbarContent>
+            <PenelopaTopToolbar />
+        </TopToolbarContent>
+        <StatusBarContent>
+            <PenelopaStatusBar />
+        </StatusBarContent>
+        <ContentRoutes>
+            <AtlasContentRoute Kind="@PenelopaContentKinds.Tools">
+                <ChildContent Context="content">
+                    <ToolPanel Content="content" />
+                </ChildContent>
+            </AtlasContentRoute>
+            <AtlasContentRoute Kind="@PenelopaContentKinds.Tree">
+                <ChildContent Context="content">
+                    <PrimitiveTreePanel Content="content" />
+                </ChildContent>
+            </AtlasContentRoute>
+            <AtlasContentRoute Kind="@PenelopaContentKinds.Canvas">
+                <ChildContent Context="content">
+                    <CanvasPanel Content="content" />
+                </ChildContent>
+            </AtlasContentRoute>
+            <AtlasContentRoute Kind="@PenelopaContentKinds.Props">
+                <ChildContent Context="content">
+                    <PropertyPanel Content="content" />
+                </ChildContent>
+            </AtlasContentRoute>
+        </ContentRoutes>
+    </AtlasWorkspaceHost>
+</section>
+
+@code {
+    private IAtlasWorkspace? _workspace;
+
+    [Inject]
+    private IAtlasWorkspaceFactory Factory { get; set; } = null!;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        var result = Factory.Create(PenelopaWorkspaceDefinition.Create("penelopa"));
+        if (!result.Succeeded || result.Value is null)
+        {
+            throw new InvalidOperationException(
+                result.Error?.DiagnosticId ?? "Penelopa workspace initialization failed.");
+        }
+
+        _workspace = result.Value;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_workspace is null)
+        {
+            return;
+        }
+
+        await _workspace.DisposeAsync();
+        _workspace = null;
+    }
+}

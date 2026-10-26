@@ -11,6 +11,12 @@ THRESHOLDS = {
     "Penelopa.Core": 0.90,
     "Penelopa.Rendering": 0.85,
 }
+# New simulation code must not hide behind the assembly average. Prefixes are
+# matched against the normalized coverage filename.
+PER_FILE_THRESHOLDS = {
+    ("Penelopa.Core", "Simulation/"): 0.90,
+    ("Penelopa.Core", "Services/DocumentSerializer.cs"): 0.90,
+}
 
 report_paths = glob.glob(str(ROOT / "artifacts" / "coverage" / "**" / "coverage.cobertura.xml"), recursive=True)
 if not report_paths:
@@ -39,10 +45,13 @@ for report_path in report_paths:
                 line_hits[key] = max(line_hits.get(key, 0), hits)
 
 stats = defaultdict(lambda: [0, 0])
-for (assembly, _filename, _number), hits in line_hits.items():
+file_stats = defaultdict(lambda: [0, 0])
+for (assembly, filename, _number), hits in line_hits.items():
     stats[assembly][1] += 1
+    file_stats[(assembly, filename)][1] += 1
     if hits > 0:
         stats[assembly][0] += 1
+        file_stats[(assembly, filename)][0] += 1
 
 failed = False
 for assembly, threshold in THRESHOLDS.items():
@@ -52,6 +61,20 @@ for assembly, threshold in THRESHOLDS.items():
     print(f"{assembly}: {rate:.2%} line coverage ({covered}/{total}), required {threshold:.0%} -> {status}")
     if rate + 1e-9 < threshold:
         failed = True
+
+for (assembly, prefix), threshold in PER_FILE_THRESHOLDS.items():
+    matched = [
+        (filename, counts)
+        for (candidate_assembly, filename), counts in sorted(file_stats.items())
+        if candidate_assembly == assembly
+        and (filename == prefix or filename.startswith(prefix))
+    ]
+    for filename, (covered, total) in matched:
+        rate = covered / total if total else 0.0
+        status = "ok" if rate + 1e-9 >= threshold else "FAIL"
+        print(f"  {filename}: {rate:.2%} ({covered}/{total}), required {threshold:.0%} -> {status}")
+        if rate + 1e-9 < threshold:
+            failed = True
 
 if failed:
     sys.exit(1)

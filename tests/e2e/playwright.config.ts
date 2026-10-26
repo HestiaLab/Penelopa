@@ -19,7 +19,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      'dotnet run --project ../../src/Penelopa --no-build --no-launch-profile --urls http://127.0.0.1:5170',
+      'dotnet run --project ../../src/Penelopa.Web --no-build --no-launch-profile --urls http://127.0.0.1:5170',
     url: 'http://127.0.0.1:5170',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

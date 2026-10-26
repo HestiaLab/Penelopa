@@ -1,0 +1,74 @@
+@namespace Penelopa.Web.Components.Simulation
+@using System.Globalization
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+@implements IDisposable
+
+<span class="penelopa-simulation-current">@CurrentValue().ToString("F3", CultureInfo.InvariantCulture)</span>
+
+@code {
+    private SimulationReadout? _readout;
+    private SimulationReadoutChannel? _subscribedChannel;
+    private bool _disposed;
+
+    [Parameter, EditorRequired]
+    public SimulationReadoutChannel Channel { get; set; } = null!;
+
+    [Parameter]
+    public SimulationTrackKey? TrackKey { get; set; }
+
+    [Parameter]
+    public float FallbackValue { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        Subscribe();
+        _readout = Channel.Current ?? _readout;
+    }
+
+    private void Subscribe()
+    {
+        if (ReferenceEquals(_subscribedChannel, Channel))
+        {
+            return;
+        }
+
+        if (_subscribedChannel is not null)
+        {
+            _subscribedChannel.Updated -= HandleReadout;
+        }
+
+        _subscribedChannel = Channel;
+        if (_subscribedChannel is not null)
+        {
+            _subscribedChannel.Updated += HandleReadout;
+        }
+    }
+
+    private void HandleReadout(SimulationReadout readout)
+    {
+        if (_disposed || TrackKey is null)
+        {
+            return;
+        }
+
+        _readout = readout;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private float CurrentValue()
+        => TrackKey is { } key
+            && _readout is not null
+            && _readout.TrackValues.TryGetValue(key, out var value)
+                ? value
+                : FallbackValue;
+
+    public void Dispose()
+    {
+        _disposed = true;
+        if (_subscribedChannel is not null)
+        {
+            _subscribedChannel.Updated -= HandleReadout;
+        }
+    }
+}

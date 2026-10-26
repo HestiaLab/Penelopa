@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "description": "Penelopa front-end toolchain (TypeScript compilation)",
   "scripts": {
-    "build:js": "tsc -p src/Penelopa",
-    "check:js": "tsc -p src/Penelopa --noEmit",
+    "build:js": "tsc -p src/Penelopa.Web",
+    "check:js": "tsc -p src/Penelopa.Web --noEmit",
     "test:js": "npm run build:js && node --test tests/js/penelopa.test.mjs",
     "test:e2e": "npm --prefix tests/e2e test"
   },

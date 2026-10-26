@@ -1,0 +1,59 @@
+@namespace Penelopa.Web.Components.Simulation
+@using System.Globalization
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+@implements IDisposable
+
+<span class="penelopa-simulation-time"
+      aria-label="Current simulation time">@FormatTime()</span>
+
+@code {
+    private SimulationReadout? _readout;
+    private SimulationReadoutChannel? _subscribed;
+    private bool _disposed;
+
+    [Parameter, EditorRequired]
+    public SimulationReadoutChannel Channel { get; set; } = null!;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_subscribed, Channel))
+        {
+            if (_subscribed is not null)
+            {
+                _subscribed.Updated -= HandleUpdated;
+            }
+
+            _subscribed = Channel;
+            if (_subscribed is not null)
+            {
+                _subscribed.Updated += HandleUpdated;
+            }
+        }
+
+        _readout = Channel?.Current ?? _readout;
+    }
+
+    private void HandleUpdated(SimulationReadout readout)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _readout = readout;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private string FormatTime()
+        => (_readout?.CurrentTime ?? 0d).ToString("F3", CultureInfo.InvariantCulture) + "s";
+
+    public void Dispose()
+    {
+        _disposed = true;
+        if (_subscribed is not null)
+        {
+            _subscribed.Updated -= HandleUpdated;
+        }
+    }
+}

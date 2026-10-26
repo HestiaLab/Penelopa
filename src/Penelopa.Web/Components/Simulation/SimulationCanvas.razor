@@ -1,0 +1,180 @@
+@namespace Penelopa.Web.Components.Simulation
+@using Microsoft.JSInterop
+@using Penelopa.Core.Alignment
+@using Penelopa.Core.Primitives
+@using Penelopa.Rendering
+@using SkiaSharp
+@using SkiaSharp.Views.Blazor
+@implements IAsyncDisposable
+
+<div class="penelopa-canvas">
+    <div class="penelopa-canvas-visual"
+         role="img"
+         aria-label="Simulation canvas showing the animated primitives">
+        <SKGLView @ref="_glView"
+                  EnableRenderLoop="@RenderLoopEnabled"
+                  OnPaintSurface="OnPaintSurface"
+                  style="width: 100%; height: 100%;" />
+    </div>
+    <button type="button"
+            class="penelopa-canvas-fit"
+            title="Fit animation to viewport"
+            disabled="@(!CanFit)"
+            @onclick="RequestFitAsync">Fit</button>
+</div>
+
+@code {
+    private readonly CanvasRenderer _renderer = new();
+    private double _dpr = 1;
+    private SKGLView? _glView;
+    private DotNetObjectReference<SimulationCanvas>? _dprRef;
+    private IJSObjectReference? _dprWatchHandle;
+    private bool _disposed;
+    private bool _pendingFit;
+    private int _lastFitVersion = int.MinValue;
+    private int _paintCount;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Primitive> Roots { get; set; } = Array.Empty<Primitive>();
+
+    /// <summary>由页面计算的动画范围；null 表示只保持当前视口。</summary>
+    [Parameter]
+    public Box? FitBounds { get; set; }
+
+    /// <summary>递增该值请求一次 Fit（由页面在动画范围变化时设置）。</summary>
+    [Parameter]
+    public int FitVersion { get; set; }
+
+    [Parameter]
+    public bool CanFit { get; set; } = true;
+
+    /// <summary>
+    /// 播放期间启用 SKGLView 自带 render loop，避免 on-demand invalidate 与
+    /// 仿真 rAF 的顺序导致绘制被合并到 30Hz；停止后关闭以保持空闲按需渲染。
+    /// </summary>
+    [Parameter]
+    public bool RenderLoopEnabled { get; set; }
+
+    [Parameter]
+    public EventCallback OnFitRequested { get; set; }
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = null!;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastFitVersion != FitVersion)
+        {
+            _lastFitVersion = FitVersion;
+            _pendingFit = true;
+            _glView?.Invalidate();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _dpr = await JS.InvokeAsync<double>("penelopa.getDpr");
+            _dprRef = DotNetObjectReference.Create(this);
+            _dprWatchHandle = await JS.InvokeAsync<IJSObjectReference>(
+                "penelopa.watchDpr",
+                _dprRef);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // 页面卸载时 JS 侧已不可达
+        }
+
+        Invalidate();
+    }
+
+    [JSInvokable]
+    public void OnDevicePixelRatioChanged(double dpr)
+    {
+        _dpr = dpr;
+        Invalidate();
+    }
+
+    /// <summary>请求下一帧重绘；播放帧回调与页面状态变化都经由此方法。</summary>
+    public void Invalidate()
+    {
+        if (!_disposed)
+        {
+            _glView?.Invalidate();
+        }
+    }
+
+    private async Task RequestFitAsync()
+    {
+        if (CanFit)
+        {
+            await OnFitRequested.InvokeAsync();
+        }
+    }
+
+    /// <summary>实际 SKGLView paint 回调次数；仅供性能基准读取，不参与渲染。</summary>
+    public int PaintCount => Interlocked.CompareExchange(ref _paintCount, 0, 0);
+
+    private void OnPaintSurface(SKPaintGLSurfaceEventArgs e)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _paintCount);
+        _renderer.Render(
+            e.Surface.Canvas,
+            e.Info,
+            (float)_dpr,
+            Roots,
+            selection: null,
+            renderHitBuffer: false);
+
+        if (_pendingFit)
+        {
+            _pendingFit = false;
+            if (FitBounds is { } bounds)
+            {
+                _renderer.FitToBounds(bounds);
+                _renderer.Render(
+                    e.Surface.Canvas,
+                    e.Info,
+                    (float)_dpr,
+                    Roots,
+                    selection: null,
+                    renderHitBuffer: false);
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _renderer.Dispose();
+        try
+        {
+            if (_dprWatchHandle is not null)
+            {
+                await _dprWatchHandle.DisposeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // 页面卸载/断开时 JS 侧已不可达
+        }
+
+        _dprRef?.Dispose();
+    }
+}

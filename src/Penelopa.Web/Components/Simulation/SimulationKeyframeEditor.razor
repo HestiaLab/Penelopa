@@ -1,0 +1,362 @@
+@namespace Penelopa.Web.Components.Simulation
+@using System.Globalization
+@using Penelopa.Core.Simulation
+
+<section class="penelopa-simulation-keyframe-editor">
+    <h3 class="penelopa-simulation-subtitle">Keyframe @(KeyframeIndex + 1)</h3>
+    @if (_error is not null)
+    {
+        <p id="@ErrorId" class="penelopa-simulation-inline-error" role="alert">@_error</p>
+    }
+
+    <div class="penelopa-simulation-field">
+        <label for="@TimeId">Time (s)</label>
+        <input id="@TimeId"
+               class="penelopa-simulation-input"
+               type="number"
+               step="0.001"
+               value="@_timeText"
+               disabled="@(!CanEdit)"
+               aria-invalid="@(_error is null ? null : "true")"
+               aria-describedby="@(_error is null ? null : ErrorId)"
+               @oninput="OnTimeInput"
+               @onchange="CommitTime" />
+    </div>
+
+    <div class="penelopa-simulation-field">
+        <label for="@ValueId">Value</label>
+        <input id="@ValueId"
+               class="penelopa-simulation-input"
+               type="number"
+               step="any"
+               value="@_valueText"
+               disabled="@(!CanEdit)"
+               aria-invalid="@(_error is null ? null : "true")"
+               aria-describedby="@(_error is null ? null : ErrorId)"
+               @oninput="OnValueInput"
+               @onchange="CommitValue" />
+    </div>
+
+    <p class="penelopa-simulation-hint">Values are relative to the parent.</p>
+
+    @if (IsLast)
+    {
+        <p class="penelopa-simulation-hint">
+            The last keyframe's interpolation is not used by playback.
+        </p>
+    }
+    else
+    {
+        <div class="penelopa-simulation-field">
+            <label for="@InterpolationId">Interpolation</label>
+            <select id="@InterpolationId"
+                    class="penelopa-simulation-input"
+                    @key="_interpolation"
+                    value="@_interpolation"
+                    disabled="@(!CanEdit)"
+                    aria-invalid="@(_error is null ? null : "true")"
+                    aria-describedby="@(_error is null ? null : ErrorId)"
+                    @onchange="OnInterpolationChanged">
+                <option value="Linear">Linear</option>
+                <option value="EaseIn">Ease in</option>
+                <option value="EaseOut">Ease out</option>
+                <option value="EaseInOut">Ease in/out</option>
+                <option value="Step">Step</option>
+                <option value="CubicBezier">Cubic bezier</option>
+            </select>
+        </div>
+
+        @if (_interpolation == InterpolationKind.CubicBezier)
+        {
+            <div class="penelopa-simulation-bezier-grid">
+                <label for="@BezierX1Id">x1
+                    <input id="@BezierX1Id" class="penelopa-simulation-input" type="number" step="0.01"
+                           value="@_x1Text" disabled="@(!CanEdit)"
+                           aria-invalid="@(_error is null ? null : "true")"
+                           aria-describedby="@(_error is null ? null : ErrorId)"
+                           @oninput="OnBezierX1Input" @onchange="CommitBezier" />
+                </label>
+                <label for="@BezierY1Id">y1
+                    <input id="@BezierY1Id" class="penelopa-simulation-input" type="number" step="0.01"
+                           value="@_y1Text" disabled="@(!CanEdit)"
+                           aria-invalid="@(_error is null ? null : "true")"
+                           aria-describedby="@(_error is null ? null : ErrorId)"
+                           @oninput="OnBezierY1Input" @onchange="CommitBezier" />
+                </label>
+                <label for="@BezierX2Id">x2
+                    <input id="@BezierX2Id" class="penelopa-simulation-input" type="number" step="0.01"
+                           value="@_x2Text" disabled="@(!CanEdit)"
+                           aria-invalid="@(_error is null ? null : "true")"
+                           aria-describedby="@(_error is null ? null : ErrorId)"
+                           @oninput="OnBezierX2Input" @onchange="CommitBezier" />
+                </label>
+                <label for="@BezierY2Id">y2
+                    <input id="@BezierY2Id" class="penelopa-simulation-input" type="number" step="0.01"
+                           value="@_y2Text" disabled="@(!CanEdit)"
+                           aria-invalid="@(_error is null ? null : "true")"
+                           aria-describedby="@(_error is null ? null : ErrorId)"
+                           @oninput="OnBezierY2Input" @onchange="CommitBezier" />
+                </label>
+            </div>
+        }
+    }
+
+    <button type="button"
+            class="penelopa-tool-button"
+            @onclick="GoToAsync">Go to keyframe</button>
+</section>
+
+@code {
+    private SimulationKeyframe? _lastKeyframe;
+    private Guid _lastPrimitiveId;
+    private string? _lastPropertyName;
+    private int _lastIndex = -1;
+
+    private string _timeText = string.Empty;
+    private string _valueText = string.Empty;
+    private InterpolationKind _interpolation;
+    private CubicBezier? _bezier;
+    private string _x1Text = string.Empty;
+    private string _y1Text = string.Empty;
+    private string _x2Text = string.Empty;
+    private string _y2Text = string.Empty;
+    private string? _error;
+
+    [Parameter]
+    public Guid PrimitiveId { get; set; }
+
+    [Parameter, EditorRequired]
+    public string PropertyName { get; set; } = null!;
+
+    [Parameter]
+    public int KeyframeIndex { get; set; }
+
+    [Parameter, EditorRequired]
+    public SimulationKeyframe Keyframe { get; set; } = null!;
+
+    [Parameter]
+    public bool IsLast { get; set; }
+
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    [Parameter]
+    public EventCallback OnGoToRequested { get; set; }
+
+    [Inject]
+    private SimulationConfigStore ConfigStore { get; set; } = null!;
+
+    private string TimeId => FieldId("time");
+    private string ValueId => FieldId("value");
+    private string InterpolationId => FieldId("interpolation");
+    private string BezierX1Id => FieldId("bezier-x1");
+    private string BezierY1Id => FieldId("bezier-y1");
+    private string BezierX2Id => FieldId("bezier-x2");
+    private string BezierY2Id => FieldId("bezier-y2");
+    private string ErrorId => FieldId("error");
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_lastKeyframe, Keyframe)
+            || _lastPrimitiveId != PrimitiveId
+            || !string.Equals(_lastPropertyName, PropertyName, StringComparison.Ordinal)
+            || _lastIndex != KeyframeIndex)
+        {
+            _lastKeyframe = Keyframe;
+            _lastPrimitiveId = PrimitiveId;
+            _lastPropertyName = PropertyName;
+            _lastIndex = KeyframeIndex;
+            ResetDraft();
+        }
+    }
+
+    private void ResetDraft()
+    {
+        _timeText = Keyframe.Time.ToString("F3", CultureInfo.InvariantCulture);
+        _valueText = Keyframe.Value.ToString(CultureInfo.InvariantCulture);
+        _interpolation = Keyframe.Interpolation;
+        _bezier = Keyframe.Bezier ?? CubicBezier.EaseInOut;
+        _x1Text = FormatBezier(_bezier.Value.X1);
+        _y1Text = FormatBezier(_bezier.Value.Y1);
+        _x2Text = FormatBezier(_bezier.Value.X2);
+        _y2Text = FormatBezier(_bezier.Value.Y2);
+        _error = null;
+    }
+
+    private void OnTimeInput(ChangeEventArgs args)
+        => _timeText = args.Value?.ToString() ?? string.Empty;
+
+    private void OnValueInput(ChangeEventArgs args)
+        => _valueText = args.Value?.ToString() ?? string.Empty;
+
+    private void OnBezierX1Input(ChangeEventArgs args) => _x1Text = args.Value?.ToString() ?? string.Empty;
+    private void OnBezierY1Input(ChangeEventArgs args) => _y1Text = args.Value?.ToString() ?? string.Empty;
+    private void OnBezierX2Input(ChangeEventArgs args) => _x2Text = args.Value?.ToString() ?? string.Empty;
+    private void OnBezierY2Input(ChangeEventArgs args) => _y2Text = args.Value?.ToString() ?? string.Empty;
+
+    private void CommitTime()
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        if (!double.TryParse(
+            _timeText,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var time))
+        {
+            SetError("Enter a valid time.");
+            return;
+        }
+
+        TryCommit(time, Keyframe.Value, _interpolation, CurrentBezier());
+    }
+
+    private void CommitValue()
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        if (!float.TryParse(
+            _valueText,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var value))
+        {
+            SetError("Enter a valid value.");
+            return;
+        }
+
+        TryCommit(Keyframe.Time, value, _interpolation, CurrentBezier());
+    }
+
+    private void OnInterpolationChanged(ChangeEventArgs args)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        if (!Enum.TryParse<InterpolationKind>(
+            args.Value?.ToString(),
+            out var interpolation))
+        {
+            SetError("Choose a valid interpolation kind.");
+            return;
+        }
+
+        _interpolation = interpolation;
+        if (_interpolation == InterpolationKind.CubicBezier && _bezier is null)
+        {
+            _bezier = CubicBezier.EaseInOut;
+        }
+
+        if (!TryCommit(
+            Keyframe.Time,
+            Keyframe.Value,
+            _interpolation,
+            CurrentBezier()))
+        {
+            _interpolation = Keyframe.Interpolation;
+            ResetBezierFromModel();
+        }
+    }
+
+    private void CommitBezier()
+    {
+        if (!CanEdit || _interpolation != InterpolationKind.CubicBezier)
+        {
+            return;
+        }
+
+        if (!TryParseBezier(out var bezier))
+        {
+            SetError("Bezier control points must be numbers.");
+            return;
+        }
+
+        _bezier = bezier;
+        TryCommit(Keyframe.Time, Keyframe.Value, InterpolationKind.CubicBezier, bezier);
+    }
+
+    private bool TryCommit(
+        double time,
+        float value,
+        InterpolationKind interpolation,
+        CubicBezier? bezier)
+    {
+        if (!ConfigStore.TryUpdateKeyframe(
+            PrimitiveId,
+            PropertyName,
+            KeyframeIndex,
+            time,
+            value,
+            interpolation,
+            bezier,
+            out var error))
+        {
+            SetError(error ?? "The keyframe could not be updated.");
+            return false;
+        }
+
+        _error = null;
+        return true;
+    }
+
+    private CubicBezier? CurrentBezier()
+        => _interpolation == InterpolationKind.CubicBezier
+            ? _bezier
+            : null;
+
+    private bool TryParseBezier(out CubicBezier bezier)
+    {
+        bezier = default;
+        if (!double.TryParse(_x1Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var x1)
+            || !double.TryParse(_y1Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var y1)
+            || !double.TryParse(_x2Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var x2)
+            || !double.TryParse(_y2Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var y2))
+        {
+            return false;
+        }
+
+        bezier = new CubicBezier(x1, y1, x2, y2);
+        return true;
+    }
+
+    private void ResetBezierFromModel()
+    {
+        _bezier = Keyframe.Bezier ?? CubicBezier.EaseInOut;
+        _x1Text = FormatBezier(_bezier.Value.X1);
+        _y1Text = FormatBezier(_bezier.Value.Y1);
+        _x2Text = FormatBezier(_bezier.Value.X2);
+        _y2Text = FormatBezier(_bezier.Value.Y2);
+    }
+
+    private void SetError(string message)
+    {
+        _error = message;
+        StateHasChanged();
+    }
+
+    private async Task GoToAsync()
+    {
+        await OnGoToRequested.InvokeAsync();
+    }
+
+    private string FieldId(string suffix)
+        => $"sim-kf-{PrimitiveId:N}-{Sanitize(PropertyName)}-{KeyframeIndex}-{suffix}";
+
+    private static string Sanitize(string value)
+        => new(value
+            .Select(character => char.IsLetterOrDigit(character)
+                ? char.ToLowerInvariant(character)
+                : '-')
+            .ToArray());
+
+    private static string FormatBezier(double value)
+        => value.ToString("G9", CultureInfo.InvariantCulture);
+}

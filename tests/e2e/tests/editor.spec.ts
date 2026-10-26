@@ -10,7 +10,10 @@ interface CanvasInfo {
 async function ready(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Circle', exact: true })).toBeVisible();
-  await page.waitForTimeout(300);
+  // CanvasPanel attaches its pointer/keyboard layer after the first render.
+  await expect(page.locator('.penelopa-canvas'))
+    .toHaveAttribute('data-pointer-ready', 'true');
+  await expect.poll(async () => (await canvasInfo(page)).width).toBeGreaterThan(0);
 }
 
 async function canvasInfo(page: Page): Promise<CanvasInfo> {
@@ -60,13 +63,21 @@ async function dragWorld(
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 8 });
-  await page.waitForTimeout(80);
   await page.mouse.up();
 }
 
 async function addPrimitive(page: Page, name: string): Promise<void> {
+  const primitivesTab = page.getByRole('tab', { name: 'Primitives' });
+  const toolsTab = page.getByRole('tab', { name: 'Tools' });
+  await primitivesTab.click();
+  await expect(page.locator('.penelopa-tree')).toBeVisible();
+  const before = await page.locator('.penelopa-tree-item').count();
+  await toolsTab.click();
   await page.getByRole('button', { name, exact: true }).click();
-  await page.waitForTimeout(200);
+  await primitivesTab.click();
+  await expect(page.locator('.penelopa-tree-item')).toHaveCount(before + 1);
+  await toolsTab.click();
+  await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
 }
 
 function field(page: Page, name: string) {
@@ -99,7 +110,6 @@ test('first Ctrl+wheel zooms without a prior canvas press', async ({ page }) => 
     await page.mouse.wheel(0, -100);
   }
   await page.keyboard.up('Control');
-  await page.waitForTimeout(200);
 
   await addPrimitive(page, 'Circle');
   const zoom = Math.pow(1.1, 10);
@@ -130,7 +140,6 @@ test('10x10 container allows drilling to its child', async ({ page }) => {
 
   await clickWorld(page, 30, 30);
   await expect(page.locator('.penelopa-properties-title')).toHaveText('Offset Container');
-  await page.waitForTimeout(80);
   await clickWorld(page, 30, 30);
 
   await expect(page.locator('.penelopa-properties-title')).toHaveText('Circle');
@@ -147,7 +156,6 @@ test('property edit and align are undoable', async ({ page }) => {
 
   await clickWorld(page, 150, -200);
   await page.keyboard.press('Control+z');
-  await page.waitForTimeout(200);
   await clickWorld(page, 10, 10);
   await expect.poll(async () => (await properties(page)).Radius).toBe('5');
 
@@ -155,13 +163,12 @@ test('property edit and align are undoable', async ({ page }) => {
   await clickWorld(page, 18, 18);
   await clickWorld(page, 13, 7, 1, true);
   await page.getByRole('button', { name: '← Left', exact: true }).click();
-  await page.waitForTimeout(200);
-  await clickWorld(page, 8, 18);
+  // 12,18 在 Align 前后的矩形范围内，避免点击时序影响选择本身。
+  await clickWorld(page, 12, 18);
   await expect.poll(async () => (await properties(page)).PosX).toBe('5');
 
   await page.keyboard.press('Control+z');
-  await page.waitForTimeout(200);
-  await clickWorld(page, 18, 18);
+  await clickWorld(page, 12, 18);
   await expect.poll(async () => (await properties(page)).PosX).toBe('10');
 
   await page.getByRole('tab', { name: 'Primitives' }).click();
@@ -203,7 +210,6 @@ test('Ctrl+Z inside a property input is left to the input and keeps the primitiv
   // 真实按键交给浏览器原生文本撤销，图元不能被删除
   await radius.focus();
   await page.keyboard.press('Control+z');
-  await page.waitForTimeout(150);
   await page.getByRole('tab', { name: 'Primitives' }).click();
   await expect(page.locator('.penelopa-tree-item')).toHaveCount(1);
 });
@@ -213,7 +219,7 @@ test('triangle resize inside a container is exactly undone by ESC', async ({ pag
   await addPrimitive(page, 'Offset');
   await addPrimitive(page, 'Triangle');
   await clickWorld(page, 80, 75);
-  await page.waitForTimeout(80);
+  await expect(page.locator('.penelopa-properties-title')).toHaveText('Offset Container');
   await clickWorld(page, 80, 75);
   await expect(page.locator('.penelopa-properties-title')).toHaveText('Triangle');
   const original = await properties(page);
@@ -224,7 +230,6 @@ test('triangle resize inside a container is exactly undone by ESC', async ({ pag
   expect((await properties(page)).Vertex3Y).toBe('60');
 
   await page.keyboard.press('Control+z');
-  await page.waitForTimeout(200);
   await expect.poll(async () => (await properties(page)).Vertex1Y).toBe('50');
 
   const info = await canvasInfo(page);
@@ -233,10 +238,10 @@ test('triangle resize inside a container is exactly undone by ESC', async ({ pag
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 8 });
-  await page.waitForTimeout(80);
   await page.keyboard.press('Escape');
   await page.mouse.up();
-  await page.waitForTimeout(200);
+  await expect.poll(async () => (await properties(page)).Vertex1Y)
+    .toBe(original.Vertex1Y);
 
   const restored = await properties(page);
   expect(restored.Vertex1X).toBe(original.Vertex1X);
@@ -255,7 +260,7 @@ test('parent and child cannot be selected together; group drag moves the child o
   await addPrimitive(page, 'Rectangle');
 
   await clickWorld(page, 80, 75);
-  await page.waitForTimeout(80);
+  await expect(page.locator('.penelopa-properties-title')).toHaveText('Offset Container');
   await clickWorld(page, 80, 75);
   await expect(page.locator('.penelopa-properties-title')).toHaveText('Triangle');
   await clickWorld(page, 80, 75, 1, true);
@@ -453,7 +458,6 @@ test('grouping and ungrouping preserve world positions and selection', async ({ 
   await expect(page.locator('.penelopa-properties-title')).toHaveText('2 primitives selected');
 
   await page.keyboard.press('Control+z');
-  await page.waitForTimeout(200);
   await expect(items).toHaveCount(3);
   await expect(items.nth(0)).toHaveText('Group');
   expect(errors).toEqual([]);
@@ -522,7 +526,11 @@ test('responsive widths keep the canvas usable and controls reachable', async ({
 
   for (const { width, minCanvas } of widths) {
     await page.setViewportSize({ width, height: 900 });
-    await page.waitForTimeout(250);
+    await expect.poll(async () => page.evaluate(() => (
+      document.querySelector('.penelopa-canvas canvas')!
+        .getBoundingClientRect().width
+    )), { message: `canvas resized for ${width}px` })
+      .toBeGreaterThanOrEqual(minCanvas);
 
     const metrics = await page.evaluate(() => {
       const canvas = document.querySelector('.penelopa-canvas canvas')!.getBoundingClientRect();

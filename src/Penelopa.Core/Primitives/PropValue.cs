@@ -140,6 +140,9 @@ public class FloatPropValue : PropValue, IPropValue<float>
 
     public override bool IsValidValue(out string? error) => Validate(Value, out error);
 
+    /// <summary>校验候选值而不写入；仿真关键帧等非属性面板路径使用。</summary>
+    public bool ValidateValue(float value, out string? error) => Validate(value, out error);
+
     public override bool TrySetText(string text, out string? error)
     {
         if (!float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
