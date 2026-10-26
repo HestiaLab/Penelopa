@@ -186,7 +186,7 @@ public class Circle : Primitive
         CenterX = new FloatPropValue("CenterX", 10.0f);
         CenterY = new FloatPropValue("CenterY", 10.0f);
         Radius = new FloatPropValue("Radius", 5.0f, exclusiveMinimum: 0f);
-        Color = new UintPropValue("Color", 0xFFFFFFFF);
+        Color = new ColorPropValue("Color", 0xFFFFFFFF);
 
         AddProp(CenterX);
         AddProp(CenterY);
@@ -197,7 +197,7 @@ public class Circle : Primitive
     public FloatPropValue CenterX { get; }
     public FloatPropValue CenterY { get; }
     public FloatPropValue Radius { get; }
-    public UintPropValue Color { get; }
+    public ColorPropValue Color { get; }
 
     protected override Box GetLocalBoundingBox()
     {
@@ -247,7 +247,7 @@ public class Rectangle : Primitive
         PosY = new FloatPropValue("PosY", 10.0f);
         Width = new FloatPropValue("Width", 10.0f, exclusiveMinimum: 0f);
         Height = new FloatPropValue("Height", 10.0f, exclusiveMinimum: 0f);
-        Color = new UintPropValue("Color", 0xFFFFFFFF);
+        Color = new ColorPropValue("Color", 0xFFFFFFFF);
 
         AddProp(PosX);
         AddProp(PosY);
@@ -260,7 +260,7 @@ public class Rectangle : Primitive
     public FloatPropValue PosY { get; }
     public FloatPropValue Width { get; }
     public FloatPropValue Height { get; }
-    public UintPropValue Color { get; }
+    public ColorPropValue Color { get; }
 
     protected override Box GetLocalBoundingBox()
     {
@@ -305,7 +305,7 @@ public class Triangle : Primitive
         Vertex2Y = new FloatPropValue("Vertex2Y", 50.0f);
         Vertex3X = new FloatPropValue("Vertex3X", 60.0f);
         Vertex3Y = new FloatPropValue("Vertex3Y", 60.0f);
-        Color = new UintPropValue("Color", 0xFFFFFFFF);
+        Color = new ColorPropValue("Color", 0xFFFFFFFF);
 
         AddProp(Vertex1X);
         AddProp(Vertex1Y);
@@ -322,7 +322,7 @@ public class Triangle : Primitive
     public FloatPropValue Vertex2Y { get; }
     public FloatPropValue Vertex3X { get; }
     public FloatPropValue Vertex3Y { get; }
-    public UintPropValue Color { get; }
+    public ColorPropValue Color { get; }
 
     protected override Box GetLocalBoundingBox()
     {

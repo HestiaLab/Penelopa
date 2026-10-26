@@ -60,10 +60,13 @@ public class PropertyValidationTests
     }
 
     [Theory]
-    [InlineData("-1")]
-    [InlineData("4294967296")]
-    [InlineData("abc")]
-    public void Color_RejectsOutOfRangeOrInvalidText(string text)
+    [InlineData("")]
+    [InlineData("#12345")]
+    [InlineData("#GGGGGG")]
+    [InlineData("#123456789")]
+    [InlineData("4294967295")]
+    [InlineData("rgba(255, 0, 0, 1)")]
+    public void Color_RejectsInvalidText(string text)
     {
         var circle = new Circle();
 
@@ -73,14 +76,20 @@ public class PropertyValidationTests
     }
 
     [Fact]
-    public void Color_AcceptsUintRange()
+    public void Color_AcceptsRgbaHexAndExposesChannels()
     {
         var circle = new Circle();
 
-        Assert.True(circle.Color.TrySetText("4294967295", out _));
-        Assert.Equal(uint.MaxValue, circle.Color.Value);
-        Assert.True(circle.Color.TrySetText("0", out _));
-        Assert.Equal(0u, circle.Color.Value);
+        Assert.True(circle.Color.TrySetText("#FF000080", out _));
+        Assert.Equal(0x80FF0000u, circle.Color.Value);
+
+        Assert.True(circle.Color.TrySetText("00FF00", out _));
+        Assert.Equal(0xFF00FF00u, circle.Color.Value);
+        Assert.Equal(0, circle.Color.R);
+        Assert.Equal(255, circle.Color.G);
+        Assert.Equal(0, circle.Color.B);
+        Assert.Equal(255, circle.Color.A);
+        Assert.Equal("#00FF00FF", circle.Color.ToHex());
     }
 
     [Theory]

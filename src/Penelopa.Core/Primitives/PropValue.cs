@@ -40,6 +40,7 @@ public abstract class PropValue
         BoolPropValue bp => bp.Value,
         StringPropValue sp => sp.Value,
         UintPropValue up => up.Value,
+        ColorPropValue cp => cp.Value,
         _ => throw UnsupportedType(),
     };
 
@@ -58,6 +59,7 @@ public abstract class PropValue
             case BoolPropValue bp: bp.Value = ToBoolean(value); break;
             case StringPropValue sp: sp.Value = ToText(value); break;
             case UintPropValue up: up.Value = ToUInt32(value); break;
+            case ColorPropValue cp: cp.Value = ToUInt32(value); break;
             default: throw UnsupportedType();
         }
     }
@@ -342,6 +344,52 @@ public class UintPropValue : PropValue, IPropValue<uint>
         Value = value;
         error = null;
         return true;
+    }
+}
+
+/// <summary>
+/// ARGB 颜色属性，内部打包为 0xAARRGGBB；文本形式为 #RRGGBB 或 #RRGGBBAA。
+/// 属性面板按 R/G/B/A 四通道编辑，序列化与历史仍使用打包值。
+/// </summary>
+public class ColorPropValue : PropValue, IPropValue<uint>
+{
+    public uint Value { get; set; }
+
+    public ColorPropValue(string name, uint value) : base(name)
+    {
+        Value = value;
+    }
+
+    public byte R => Color.FromUint(Value).R;
+    public byte G => Color.FromUint(Value).G;
+    public byte B => Color.FromUint(Value).B;
+    public byte A => Color.FromUint(Value).A;
+
+    /// <summary>规范化为 #RRGGBBAA，供属性面板显示与提交。</summary>
+    public string ToHex() => $"#{R:X2}{G:X2}{B:X2}{A:X2}";
+
+    public override bool TrySetText(string text, out string? error)
+    {
+        var candidate = (text ?? string.Empty).Trim();
+        if (candidate.StartsWith('#'))
+        {
+            candidate = candidate[1..];
+        }
+
+        if (candidate.Length is 6 or 8
+            && uint.TryParse(candidate, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgba))
+        {
+            var r = (byte)((rgba >> (candidate.Length == 8 ? 24 : 16)) & 0xFF);
+            var g = (byte)((rgba >> (candidate.Length == 8 ? 16 : 8)) & 0xFF);
+            var b = (byte)((rgba >> (candidate.Length == 8 ? 8 : 0)) & 0xFF);
+            var a = candidate.Length == 8 ? (byte)(rgba & 0xFF) : (byte)255;
+            Value = new Color(r, g, b, a).ToUint();
+            error = null;
+            return true;
+        }
+
+        error = "Enter a color as #RRGGBB or #RRGGBBAA.";
+        return false;
     }
 }
 

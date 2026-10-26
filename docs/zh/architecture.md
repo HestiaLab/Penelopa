@@ -21,7 +21,7 @@ src/Penelopa.Core                          图元模型 + 对齐算法
 
 纯领域逻辑，不依赖 UI 或 SkiaSharp：
 
-- `Primitives/` — `Primitive` 基类与 `Circle` / `Rectangle` / `Triangle` 子类，各自暴露可编辑的 `PropValue` 属性包（`Float`、`Double`、`Int`、`Uint`、`Bool`、`String`）。`PropValue.TrySetText` 在领域层校验（有限数值、正尺寸、uint 颜色范围、去空白非空且不超过 128 字符的名称）；未知 `PropValue` 子类型在历史/序列化中抛出 `NotSupportedException`，不再静默丢弃。
+- `Primitives/` — `Primitive` 基类与 `Circle` / `Rectangle` / `Triangle` 子类，各自暴露可编辑的 `PropValue` 属性包（`Float`、`Double`、`Int`、`Uint`、`Color`、`Bool`、`String`）。`PropValue.TrySetText` 在领域层校验（有限数值、正尺寸、颜色文本 `#RRGGBB` / `#RRGGBBAA`、去空白非空且不超过 128 字符的名称）；未知 `PropValue` 子类型在历史/序列化中抛出 `NotSupportedException`，不再静默丢弃。
 - `Alignment/` — `AlignType` 枚举（Left/HCenter/Right/Top/VCenter/Bottom）、`Box`（轴对齐包围盒）、`Transform` 与 `AlignExtensions.Align`——将选中项移动到其对齐值与整体包围盒匹配。操作幂等：已对齐的选择返回 false 且不移动。
 - `Services/IPrimitiveService` — 文档与选区的唯一状态源，通过 DI 在各面板间共享（单例）。`GetAll()` / `GetSelection()` 返回只读快照，`GetState()` 返回不可变 `DocumentState`。结构操作校验容器属于本文档，拒绝自身/重复父级/环路；内部维护文档归属，阻止同一图元挂到两个文档。`GroupSelection` / `TryUngroup` 实现 ADR-0004 的根级分组规则。
 - `Services/DocumentHistory` — 快照式事务。快照按引用保存图元树、属性值与容器子元素；选择不进入快照（见 ADR-0002）。每次修改最多生成一个撤销条目，取消手势与撤销共用同一快照。
@@ -192,7 +192,8 @@ undo/redo 后按引用重新应用仍存活的选区。捕获对异常安全：�
 Ctrl+Z / Ctrl+Shift+Z（或 Ctrl+Y）通过指针层的按键处理驱动 undo/redo。
 
 属性输入在领域层校验（`PropValue.TrySetText`）：半径/宽高必须为正，
-数值必须有限且在编辑器量级内，颜色必须落在 `uint` 范围，名称去空白后
+数值必须有限且在编辑器量级内，颜色接受 `#RRGGBB` / `#RRGGBBAA`
+（属性面板按 R/G/B/A 四通道编辑），名称去空白后
 非空且不超过 128 字符。非法文本显示
 字段错误且不写入；反序列化用同一套约束校验每个属性，非法文档整体拒绝。
 
