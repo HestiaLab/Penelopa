@@ -30,6 +30,58 @@ body {
     background: var(--penelopa-bg);
 }
 
+.penelopa-shell {
+    position: relative;
+}
+
+/* Whole-workspace file drop affordance. The JS layer toggles the shell class
+   while dragging files; the overlay itself never receives pointer events. */
+.penelopa-drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    border: 2px dashed var(--penelopa-accent);
+    border-radius: var(--atlas-radius, 0.375rem);
+    background: color-mix(in srgb, var(--penelopa-bg) 68%, transparent);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.12s ease, visibility 0.12s ease;
+}
+
+.penelopa-shell.penelopa-drop-active .penelopa-drop-overlay {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* The onboarding card would otherwise sit directly behind the drop card. */
+.penelopa-shell.penelopa-drop-active .penelopa-canvas-empty {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.penelopa-drop-overlay-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.9rem 1.25rem;
+    border: 1px solid var(--penelopa-border);
+    border-radius: var(--atlas-radius, 0.375rem);
+    background: var(--penelopa-surface);
+    color: var(--penelopa-ink);
+    box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, var(--penelopa-ink) 18%, transparent);
+    text-align: center;
+}
+
+.penelopa-drop-overlay-card span {
+    color: var(--penelopa-muted);
+    font-size: 0.75rem;
+}
+
 button {
     font: inherit;
 }
@@ -396,6 +448,37 @@ h1:focus {
     background: var(--penelopa-selection);
 }
 
+/* A file input is visually merged into a button label; the input remains
+   focusable so the native picker is available from the keyboard. */
+.penelopa-file-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.penelopa-file-button input[type="file"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.penelopa-file-button:focus-within {
+    outline: 2px solid var(--penelopa-accent);
+    outline-offset: 1px;
+}
+
+.penelopa-tool-warning-list {
+    margin: 0.35rem 0 0;
+    padding-left: 1.1rem;
+    color: var(--penelopa-warning);
+    font-size: 0.75rem;
+}
+
 .penelopa-tree-list {
     list-style: none;
     margin: 0;
@@ -606,6 +689,7 @@ h1:focus {
     min-height: 0;
     box-sizing: border-box;
     overflow: auto;
+    position: relative;
 }
 
 /* While a pointer drag is active, the browser must not hijack the gesture
@@ -647,6 +731,79 @@ h1:focus {
 .penelopa-canvas-fit:hover {
     background: var(--penelopa-hover);
     opacity: 1;
+}
+
+/* Empty-canvas onboarding lives outside the pointer layer so its controls
+   are never captured as drawing gestures. */
+.penelopa-canvas-empty {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    pointer-events: none;
+}
+
+.penelopa-canvas-empty-card {
+    max-width: 24rem;
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--penelopa-border);
+    border-radius: var(--atlas-radius, 0.375rem);
+    background: var(--penelopa-surface);
+    color: var(--penelopa-ink);
+    box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, var(--penelopa-ink) 18%, transparent);
+    text-align: center;
+    /* 卡片本体不拦截画布手势；只有示例按钮可交互，首次 Ctrl+滚轮仍能缩放。 */
+    pointer-events: none;
+}
+
+.penelopa-canvas-empty-card .penelopa-sample-button {
+    pointer-events: auto;
+}
+
+.penelopa-canvas-empty-card h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+}
+
+.penelopa-canvas-empty-card p {
+    margin: 0.35rem 0;
+    color: var(--penelopa-muted);
+    font-size: 0.8rem;
+}
+
+.penelopa-sample-button {
+    margin: 0.5rem 0 0.25rem;
+    padding: 0.4rem 0.9rem;
+}
+
+.penelopa-canvas-empty-card .penelopa-canvas-empty-hint {
+    font-size: 0.72rem;
+}
+
+.penelopa-canvas-notice {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 9;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: calc(100% - 5rem);
+    padding: 0.35rem 0.5rem 0.35rem 0.75rem;
+    border: 1px solid var(--penelopa-border);
+    border-radius: 0.3rem;
+    background: var(--penelopa-surface);
+    color: var(--penelopa-ink);
+    box-shadow: 0 0.25rem 0.75rem color-mix(in srgb, var(--penelopa-ink) 14%, transparent);
+    font-size: 0.75rem;
+    pointer-events: none;
+}
+
+.penelopa-canvas-notice button {
+    pointer-events: auto;
 }
 
 /* The canvas is a focusable keyboard surface; keep the focus ring visible

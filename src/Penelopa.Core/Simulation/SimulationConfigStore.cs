@@ -387,6 +387,22 @@ public sealed class SimulationConfigStore
         Changed?.Invoke();
     }
 
+    /// <summary>捕获当前配置与完整配置撤销/重做栈。</summary>
+    public SimulationConfigState CaptureState()
+        => new(_config, _undo.ToArray(), _redo.ToArray());
+
+    /// <summary>恢复配置、Loop 与配置撤销/重做栈；会触发一次 Changed。</summary>
+    public void RestoreState(SimulationConfigState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        _config = state.Config;
+        _undo.Clear();
+        _undo.AddRange(state.Undo);
+        _redo.Clear();
+        _redo.AddRange(state.Redo);
+        Changed?.Invoke();
+    }
+
     /// <summary>清空配置撤销/重做历史，但保留当前配置（进入仿真页时使用）。</summary>
     public void ClearHistory()
     {
@@ -517,4 +533,24 @@ public sealed class SimulationConfigStore
 
         return second;
     }
+}
+
+/// <summary>仿真配置的一次性完整快照；内容对调用方不透明。</summary>
+public sealed class SimulationConfigState
+{
+    internal SimulationConfigState(
+        SimulationConfig config,
+        IReadOnlyList<IReadOnlyList<SimulationTrack>> undo,
+        IReadOnlyList<IReadOnlyList<SimulationTrack>> redo)
+    {
+        Config = config;
+        Undo = undo;
+        Redo = redo;
+    }
+
+    internal SimulationConfig Config { get; }
+
+    internal IReadOnlyList<IReadOnlyList<SimulationTrack>> Undo { get; }
+
+    internal IReadOnlyList<IReadOnlyList<SimulationTrack>> Redo { get; }
 }

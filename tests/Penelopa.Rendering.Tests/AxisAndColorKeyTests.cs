@@ -102,6 +102,24 @@ public class AxisAndColorKeyTests
         Assert.Null(renderer.HitTest(Size / 2f, Size / 2f));
     }
 
+    [Fact]
+    public void ReadOnlyPresentationCanHideTheDebugAxes()
+    {
+        using var renderer = new CanvasRenderer();
+        var bitmap = new SKBitmap(new SKImageInfo(Size, Size));
+
+        renderer.Render(
+            new SKCanvas(bitmap),
+            new SKImageInfo(Size, Size),
+            1f,
+            Array.Empty<Primitive>(),
+            drawAxes: false);
+
+        Assert.False(IsRed(bitmap.GetPixel(4, Size / 2)));
+        Assert.False(IsRed(bitmap.GetPixel(Size / 2, 4)));
+        Assert.False(IsRed(bitmap.GetPixel(Size / 2, Size / 2)));
+    }
+
     private static SKBitmap Render(
         Func<int, ViewTransform> createView,
         out SKImageInfo info,

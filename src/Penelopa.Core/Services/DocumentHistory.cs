@@ -143,6 +143,71 @@ public sealed class DocumentHistory
         _undoStack.Clear();
         _redoStack.Clear();
     }
+
+    /// <summary>
+    /// 捕获当前文档和完整的 undo/redo 栈，供一次性导入回滚使用。
+    /// 事务进行中不允许捕获，避免保存一个无法一致恢复的中间状态。
+    /// </summary>
+    public DocumentHistoryState CaptureState()
+    {
+        if (_depth > 0)
+        {
+            throw new InvalidOperationException(
+                "Document history cannot be captured while a transaction is open.");
+        }
+
+        return new DocumentHistoryState(
+            DocumentSnapshot.Capture(_service.GetAll().ToList()),
+            _undoStack.ToArray(),
+            _redoStack.ToArray());
+    }
+
+    /// <summary>
+    /// 恢复当前文档及 undo/redo 栈。选区不属于历史快照，由调用方另行恢复。
+    /// </summary>
+    public void RestoreState(DocumentHistoryState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (_depth > 0)
+        {
+            throw new InvalidOperationException(
+                "Document history cannot be restored while a transaction is open.");
+        }
+
+        _undoStack.Clear();
+        _redoStack.Clear();
+        state.Current.Apply(_service);
+
+        for (var index = state.Undo.Count - 1; index >= 0; index--)
+        {
+            _undoStack.Push(state.Undo[index]);
+        }
+
+        for (var index = state.Redo.Count - 1; index >= 0; index--)
+        {
+            _redoStack.Push(state.Redo[index]);
+        }
+    }
+}
+
+/// <summary>文档历史的一次性完整快照；内容对调用方不透明。</summary>
+public sealed class DocumentHistoryState
+{
+    internal DocumentHistoryState(
+        DocumentSnapshot current,
+        IReadOnlyList<DocumentSnapshot> undo,
+        IReadOnlyList<DocumentSnapshot> redo)
+    {
+        Current = current;
+        Undo = undo;
+        Redo = redo;
+    }
+
+    internal DocumentSnapshot Current { get; }
+
+    internal IReadOnlyList<DocumentSnapshot> Undo { get; }
+
+    internal IReadOnlyList<DocumentSnapshot> Redo { get; }
 }
 
 /// <summary>图元树的某一时刻快照。</summary>

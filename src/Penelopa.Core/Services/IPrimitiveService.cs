@@ -36,6 +36,12 @@ public interface IPrimitiveService
     bool CanUndo { get; }
     bool CanRedo { get; }
 
+    /// <summary>捕获当前文档与完整 undo/redo 栈，供导入回滚等显式快照使用。</summary>
+    DocumentHistoryState CaptureHistoryState();
+
+    /// <summary>恢复文档与 undo/redo 栈；选区不属于历史，由调用方另行恢复。</summary>
+    void RestoreHistoryState(DocumentHistoryState state);
+
     /// <summary>开始事务边界；所有文档修改都通过它进入历史。</summary>
     void BeginTransaction();
 
@@ -75,6 +81,12 @@ public interface IPrimitiveService
 
     /// <summary>通知指定图元的几何已变更。</summary>
     void NotifyPrimitivesChanged(IEnumerable<Primitive> primitives);
+
+    /// <summary>
+    /// 通知预览/仿真结束后的临时值已恢复。它刷新面板，但不表示用户编辑了文档，
+    /// 因此不应使内容变更快照失效。
+    /// </summary>
+    void NotifyTransientValuesChanged();
 
     /// <summary>统一的文档变更通知；所有状态变化（含加载、取消、撤销）都会触发。</summary>
     event Action<DocumentChange>? Changed;

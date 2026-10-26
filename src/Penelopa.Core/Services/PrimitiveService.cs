@@ -293,6 +293,10 @@ public class PrimitiveService : IPrimitiveService
 
     public bool CanRedo => _history.CanRedo;
 
+    public DocumentHistoryState CaptureHistoryState() => _history.CaptureState();
+
+    public void RestoreHistoryState(DocumentHistoryState state) => _history.RestoreState(state);
+
     /// <summary>开始事务边界：所有文档修改（结构/对齐/属性/手势）共用。</summary>
     public void BeginTransaction() => _history.BeginTransaction();
 
@@ -442,6 +446,9 @@ public class PrimitiveService : IPrimitiveService
 
     public void NotifyPrimitivesChanged(IEnumerable<Primitive> primitives)
         => RaiseChanged(DocumentChangeKind.Geometry);
+
+    public void NotifyTransientValuesChanged()
+        => RaiseChanged(DocumentChangeKind.Transient);
 
     /// <summary>所有选择入口统一规范化：祖先已选中时排除其后代，避免双重变换。</summary>
     private void ReplaceSelection(IEnumerable<Primitive> primitives)

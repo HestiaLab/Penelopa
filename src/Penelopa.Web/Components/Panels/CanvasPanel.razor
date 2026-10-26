@@ -5,6 +5,7 @@
 @using Penelopa.Core.Interaction
 @using Penelopa.Core.Primitives
 @using Penelopa.Core.Services
+@using Penelopa.Web.Services
 @using DocumentState = Penelopa.Core.Services.DocumentState
 @using Penelopa.Rendering
 @using SkiaSharp
@@ -33,6 +34,40 @@
             Delete removes the selection. Escape cancels the current gesture.
         </p>
     </div>
+    @if (_state.Roots.Count == 0)
+    {
+        <section class="penelopa-canvas-empty"
+                 aria-labelledby="penelopa-canvas-empty-title">
+            <div class="penelopa-canvas-empty-card">
+                <h2 id="penelopa-canvas-empty-title">Start with a sample</h2>
+                <p>
+                    Load Loop Study 01, a 9-second media-player demo with 5 tracks and
+                    14 keyframes.
+                </p>
+                <button type="button"
+                        class="penelopa-tool-button penelopa-sample-button"
+                        disabled="@_sampleBusy"
+                        @onclick="LoadSampleAsync">@(_sampleBusy ? "Loading…" : "Load Loop Study 01")</button>
+                <p class="penelopa-canvas-empty-hint">
+                    Or add a Circle, Rectangle, or Triangle from Tools.
+                </p>
+                @if (_sampleError is not null)
+                {
+                    <p class="penelopa-tool-message is-error" role="alert">@_sampleError</p>
+                }
+            </div>
+        </section>
+    }
+    @if (_sampleNotice is not null)
+    {
+        <div class="penelopa-canvas-notice" role="status">
+            <span>@_sampleNotice</span>
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-label="Dismiss sample hint"
+                    @onclick="DismissSampleNotice">&#215;</button>
+        </div>
+    }
 </div>
 
 @code {
@@ -46,9 +81,15 @@
     private IJSObjectReference? _pointerHandle;
     private IJSObjectReference? _dprWatchHandle;
     private bool _disposed;
+    private bool _sampleBusy;
+    private string? _sampleError;
+    private string? _sampleNotice;
 
     [Inject]
     private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    [Inject]
+    private DocumentFileService DocumentFiles { get; set; } = null!;
 
     [Inject]
     private IJSRuntime JS { get; set; } = null!;
@@ -69,6 +110,7 @@
     private void HandleDocumentChanged(DocumentChange change)
     {
         _state = change.State;
+        _sampleNotice = null;
         StateHasChanged();
         RequestRender();
     }
@@ -199,6 +241,58 @@
     {
         _renderer.FitToContent(_state.Roots);
         RequestRender();
+    }
+
+    private async Task LoadSampleAsync()
+    {
+        if (_sampleBusy)
+        {
+            return;
+        }
+
+        _sampleBusy = true;
+        _sampleError = null;
+        StateHasChanged();
+        try
+        {
+            var result = await DocumentFiles.LoadSampleAsync();
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (!result.Success || result.Document is null)
+            {
+                _sampleError = result.Error ?? "The sample scene could not be loaded.";
+                return;
+            }
+
+            DocumentFiles.Apply(result.Document);
+            _sampleNotice = "Sample loaded. Select Simulate → Play.";
+            FitCanvas();
+        }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+            {
+                Console.Error.WriteLine($"[Penelopa] CanvasPanel sample load failed: {ex}");
+                _sampleError = "The sample scene could not be loaded.";
+            }
+        }
+        finally
+        {
+            _sampleBusy = false;
+            if (!_disposed)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void DismissSampleNotice()
+    {
+        _sampleNotice = null;
+        StateHasChanged();
     }
 
     private void OnPaintSurface(SKPaintGLSurfaceEventArgs e)

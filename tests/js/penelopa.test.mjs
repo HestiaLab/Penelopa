@@ -571,3 +571,219 @@ test('storage helpers return results instead of throwing', () => {
   assert.doesNotMatch(failed.error, / at /);
   assert.equal(harness.storage.data.get('penelopa.document'), 'next');
 });
+
+test('downloadTextFile creates a temporary blob link and revokes it', () => {
+  let clicked = false;
+  let appended = false;
+  let removed = false;
+  let revoked = null;
+  const blobs = [];
+  const anchor = {
+    href: '',
+    download: '',
+    rel: '',
+    style: {},
+    click() { clicked = true; },
+    remove() { removed = true; },
+  };
+  class TestBlob {
+    constructor(parts, options) {
+      this.parts = parts;
+      this.options = options;
+      blobs.push(this);
+    }
+  }
+  const window = {
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const document = {
+    createElement(tag) {
+      assert.equal(tag, 'a');
+      return anchor;
+    },
+    body: {
+      appendChild(node) {
+        assert.equal(node, anchor);
+        appended = true;
+      },
+    },
+  };
+  const URL = {
+    createObjectURL(blob) {
+      assert.equal(blob, blobs[0]);
+      return 'blob:penelopa';
+    },
+    revokeObjectURL(url) {
+      revoked = url;
+    },
+  };
+  const context = vm.createContext({
+    window,
+    document,
+    Blob: TestBlob,
+    URL,
+    setTimeout(callback) { callback(); },
+    console,
+  });
+  vm.runInContext(source, context);
+
+  window.penelopa.downloadTextFile(
+    'penelopa-20261026-120000.penelopa.json',
+    '{"Version":2}');
+
+  assert.equal(clicked, true);
+  assert.equal(appended, true);
+  assert.equal(removed, true);
+  assert.equal(anchor.download, 'penelopa-20261026-120000.penelopa.json');
+  assert.equal(anchor.href, 'blob:penelopa');
+  assert.equal(anchor.rel, 'noopener');
+  assert.equal(blobs[0].parts[0], '{"Version":2}');
+  assert.equal(blobs[0].options.type, 'application/json;charset=utf-8');
+  assert.equal(revoked, 'blob:penelopa');
+});
+
+function createDropHarness() {
+  const rootListeners = new Map();
+  const windowListeners = new Map();
+  const classes = new Set();
+  const changes = [];
+  let inputAvailable = false;
+  let toolsSelected = false;
+
+  const addListener = (map) => (type, handler) => {
+    const handlers = map.get(type) ?? new Set();
+    handlers.add(handler);
+    map.set(type, handlers);
+  };
+  const removeListener = (map) => (type, handler) => {
+    map.get(type)?.delete(handler);
+  };
+
+  class TestDataTransfer {
+    constructor() {
+      this.files = [];
+      this.items = { add: (file) => this.files.push(file) };
+      this.types = ['Files'];
+      this.dropEffect = 'none';
+    }
+  }
+  class TestEvent {
+    constructor(type, init) {
+      this.type = type;
+      this.bubbles = init?.bubbles ?? false;
+    }
+  }
+
+  const input = {
+    disabled: false,
+    files: null,
+    dispatchEvent(event) {
+      changes.push(event);
+      return true;
+    },
+  };
+  const toolsTab = {
+    textContent: 'Tools',
+    getAttribute(name) {
+      return name === 'aria-selected' ? (toolsSelected ? 'true' : 'false') : null;
+    },
+    click() {
+      toolsSelected = true;
+      inputAvailable = true;
+    },
+  };
+  const root = {
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); },
+    },
+    addEventListener: addListener(rootListeners),
+    removeEventListener: removeListener(rootListeners),
+    querySelector(selector) {
+      assert.match(selector, /input\[type="file"\]/);
+      return inputAvailable ? input : null;
+    },
+    querySelectorAll(selector) {
+      assert.equal(selector, '[role="tab"]');
+      return [toolsTab];
+    },
+  };
+  const window = {
+    addEventListener: addListener(windowListeners),
+    removeEventListener: removeListener(windowListeners),
+  };
+  const context = vm.createContext({
+    window,
+    document: {},
+    DataTransfer: TestDataTransfer,
+    Event: TestEvent,
+    setTimeout(callback) { callback(); },
+    console,
+  });
+  vm.runInContext(source, context);
+
+  return {
+    window,
+    root,
+    input,
+    toolsTab,
+    classes,
+    changes,
+    rootListeners,
+    windowListeners,
+    isToolsSelected: () => toolsSelected,
+    dispatch(type, event) {
+      for (const handler of rootListeners.get(type) ?? []) {
+        handler(event);
+      }
+    },
+  };
+}
+
+test('attachFileDrop activates Tools, assigns the dropped file, and cleans up', () => {
+  const harness = createDropHarness();
+  const file = { name: 'scene.penelopa.json', size: 12 };
+  const dataTransfer = { types: ['Files'], files: [file], dropEffect: 'none' };
+  let prevented = false;
+  const event = {
+    dataTransfer,
+    preventDefault() { prevented = true; },
+  };
+  const handle = harness.window.penelopa.attachFileDrop(harness.root);
+
+  harness.dispatch('dragenter', event);
+  assert.equal(harness.classes.has('penelopa-drop-active'), true);
+
+  harness.dispatch('drop', event);
+
+  assert.equal(prevented, true);
+  assert.equal(harness.isToolsSelected(), true);
+  assert.deepEqual(Array.from(harness.input.files), [file]);
+  assert.equal(harness.changes.length, 1);
+  assert.equal(harness.changes[0].type, 'change');
+  assert.equal(harness.classes.has('penelopa-drop-active'), false);
+
+  handle.dispose();
+  assert.equal(harness.rootListeners.get('drop')?.size ?? 0, 0);
+  assert.equal(harness.windowListeners.get('drop')?.size ?? 0, 0);
+  assert.equal(harness.classes.has('penelopa-drop-active'), false);
+});
+
+test('attachFileDrop ignores non-file drags', () => {
+  const harness = createDropHarness();
+  const dataTransfer = { types: ['text/plain'], files: [], dropEffect: 'none' };
+  const event = {
+    dataTransfer,
+    preventDefault() { throw new Error('non-file drag must not be prevented'); },
+  };
+  harness.window.penelopa.attachFileDrop(harness.root);
+
+  harness.dispatch('dragenter', event);
+  harness.dispatch('drop', event);
+
+  assert.equal(harness.classes.has('penelopa-drop-active'), false);
+  assert.equal(harness.isToolsSelected(), false);
+  assert.equal(harness.changes.length, 0);
+});

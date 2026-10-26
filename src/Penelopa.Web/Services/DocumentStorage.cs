@@ -38,6 +38,9 @@ public sealed class DocumentStorage
         _js = js;
     }
 
+    /// <summary>仅在一次完整的 localStorage 写入成功后触发。</summary>
+    public event Action? Saved;
+
     public async Task<DocumentSaveResult> SaveAsync(
         IReadOnlyList<Primitive> roots,
         IEnumerable<Primitive> selection,
@@ -62,9 +65,13 @@ public sealed class DocumentStorage
             }
 
             var write = await WriteStorageAsync(StorageKey, json);
-            return write.Success
-                ? new DocumentSaveResult(true, null)
-                : SaveFailure(write.Error);
+            if (!write.Success)
+            {
+                return SaveFailure(write.Error);
+            }
+
+            Saved?.Invoke();
+            return new DocumentSaveResult(true, null);
         }
         catch (Exception ex)
         {

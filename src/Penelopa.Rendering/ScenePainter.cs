@@ -66,18 +66,23 @@ internal sealed class ScenePainter : IDisposable
         SKCanvas? hitCanvas,
         ViewTransform view,
         IReadOnlyList<Primitive> primitives,
-        HitTestBuffer? hitBuffer)
+        HitTestBuffer? hitBuffer,
+        bool drawAxes = true)
     {
         // 坐标轴在屏幕空间绘制：缩放/平移只移动原点，轴线始终跨越整个可见视口。
-        // 先于图元绘制以保持轴位于内容下方，且不进入命中缓冲区。
-        canvas.Save();
-        try
+        // 先于图元绘制以保持轴位于内容下方，且不进入命中缓冲区。只读展示
+        // 路径可关闭坐标轴，避免调试标记穿过成品画面。
+        if (drawAxes)
         {
-            DrawCoordinateSystem(canvas, view);
-        }
-        finally
-        {
-            canvas.Restore();
+            canvas.Save();
+            try
+            {
+                DrawCoordinateSystem(canvas, view);
+            }
+            finally
+            {
+                canvas.Restore();
+            }
         }
 
         canvas.Save();

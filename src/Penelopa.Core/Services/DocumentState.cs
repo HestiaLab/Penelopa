@@ -10,6 +10,12 @@ public enum DocumentChangeKind
     Structure = 1,
     Selection = 2,
     Geometry = 4,
+
+    /// <summary>
+    /// 预览/仿真结束后的临时值刷新：模型已恢复基础值，但不是用户对文档的持久编辑。
+    /// 依赖"内容是否变化"的订阅方应忽略此标志。
+    /// </summary>
+    Transient = 8,
 }
 
 /// <summary>统一的文档变更通知：变更类别 + 变更后的完整状态快照。</summary>

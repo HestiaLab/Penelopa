@@ -52,6 +52,163 @@ window.penelopa.writeStorage = function (key, value) {
         return { ok: false, error: describeStorageError(error) };
     }
 };
+// 通过临时 Blob URL 触发浏览器下载；不经过服务器，文件内容不会离开本地。
+window.penelopa.downloadTextFile = function (fileName, content) {
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    try {
+        anchor.click();
+    }
+    finally {
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+};
+// 编辑页工作区的文件拖放层。拖放产生的 FileList 交给现有 InputFile，
+// 因而复用同一套确认、替换和取消逻辑；如果当前不在 Tools 标签，
+// 会先激活它，再等待输入控件挂载。
+window.penelopa.attachFileDrop = function (rootEl) {
+    let depth = 0;
+    let disposed = false;
+    let dropToken = 0;
+    const hasFiles = (event) => {
+        var _a;
+        const types = (_a = event.dataTransfer) === null || _a === void 0 ? void 0 : _a.types;
+        return !!types && Array.from(types).indexOf('Files') >= 0;
+    };
+    const show = () => {
+        rootEl.classList.add('penelopa-drop-active');
+    };
+    const hide = () => {
+        depth = 0;
+        rootEl.classList.remove('penelopa-drop-active');
+    };
+    const findInput = () => {
+        const input = rootEl.querySelector('.penelopa-file-button input[type="file"]');
+        return input ? input : null;
+    };
+    const activateToolsTab = () => {
+        var _a;
+        const tabs = rootEl.querySelectorAll('[role="tab"]');
+        for (const tab of Array.from(tabs)) {
+            if (((_a = tab.textContent) !== null && _a !== void 0 ? _a : '').trim() === 'Tools') {
+                if (tab.getAttribute('aria-selected') !== 'true') {
+                    tab.click();
+                }
+                return;
+            }
+        }
+    };
+    const assign = (files, token) => {
+        if (disposed || token !== dropToken) {
+            return;
+        }
+        const input = findInput();
+        if (!input || input.disabled) {
+            return;
+        }
+        try {
+            // FileList 可能在 drop 事件结束后被清空；复制 File 引用，
+            // 在真正投递时再构造一个新的 DataTransfer。
+            const transfer = new DataTransfer();
+            for (const file of files) {
+                transfer.items.add(file);
+            }
+            input.files = transfer.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        catch (error) {
+            console.error('[Penelopa] file drop failed', error);
+        }
+    };
+    const deliver = (files, attempts, token) => {
+        if (disposed || token !== dropToken) {
+            return;
+        }
+        const input = findInput();
+        if (input && !input.disabled) {
+            // 新挂载的 InputFile 在 DOM 出现后还要一帧才完成事件绑定。
+            setTimeout(() => assign(files, token), 100);
+            return;
+        }
+        if (attempts <= 0) {
+            console.warn('[Penelopa] file drop could not find the import input');
+            return;
+        }
+        activateToolsTab();
+        setTimeout(() => deliver(files, attempts - 1, token), 50);
+    };
+    const onDragEnter = (event) => {
+        if (!hasFiles(event)) {
+            return;
+        }
+        depth++;
+        show();
+    };
+    const onDragOver = (event) => {
+        if (!hasFiles(event)) {
+            return;
+        }
+        event.preventDefault();
+        if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'copy';
+        }
+        show();
+    };
+    const onDragLeave = () => {
+        depth--;
+        if (depth <= 0) {
+            hide();
+        }
+    };
+    const onDrop = (event) => {
+        var _a;
+        if (!hasFiles(event)) {
+            hide();
+            return;
+        }
+        event.preventDefault();
+        const files = ((_a = event.dataTransfer) === null || _a === void 0 ? void 0 : _a.files)
+            ? Array.from(event.dataTransfer.files)
+            : [];
+        hide();
+        if (files.length === 0) {
+            return;
+        }
+        const token = ++dropToken;
+        deliver(files, 20, token);
+    };
+    const onDragEnd = () => hide();
+    rootEl.addEventListener('dragenter', onDragEnter);
+    rootEl.addEventListener('dragover', onDragOver);
+    rootEl.addEventListener('dragleave', onDragLeave);
+    rootEl.addEventListener('drop', onDrop);
+    rootEl.addEventListener('dragend', onDragEnd);
+    window.addEventListener('dragend', onDragEnd);
+    window.addEventListener('drop', onDragEnd);
+    window.addEventListener('blur', onDragEnd);
+    return {
+        dispose() {
+            disposed = true;
+            dropToken++;
+            rootEl.removeEventListener('dragenter', onDragEnter);
+            rootEl.removeEventListener('dragover', onDragOver);
+            rootEl.removeEventListener('dragleave', onDragLeave);
+            rootEl.removeEventListener('drop', onDrop);
+            rootEl.removeEventListener('dragend', onDragEnd);
+            window.removeEventListener('dragend', onDragEnd);
+            window.removeEventListener('drop', onDragEnd);
+            window.removeEventListener('blur', onDragEnd);
+            hide();
+        },
+    };
+};
 window.penelopa.watchDpr = function (dotNetRef) {
     let mq = null;
     let disposed = false;

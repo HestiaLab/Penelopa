@@ -10,9 +10,21 @@ Penelopa 在六区域可停靠工作区中承载 SkiaSharp 绘制画布、图元
 
 ## 界面预览
 
-![Penelopa 编辑器（亮色模式）](docs/screenshot.png)
+![已加载 Loop Study 01 示例的 Penelopa 编辑器（亮色模式）](docs/screenshot.png)
 
 六区域可停靠工作区：SkiaSharp 绘制画布、图元树、对齐工具与属性编辑器。
+
+![正在播放 Loop Study 01 的仿真工作区](docs/simulation.png)
+
+**Loop Study 01** 是内置的 9 秒媒体播放器示例，包含 5 条关键帧轨道。仿真页只展示当前所选图元的两条轨道，其余场景照常播放。
+
+### 试用示例
+
+1. 打开在线演示。
+2. 在空编辑器中选择 **Load Loop Study 01**。
+3. 选择 **Simulate**，再按 **Play**。
+
+示例本身就是一份普通 v2 文档。编辑器 Document 区的 **Import file…** / **Export file…** 读写同一套 `.penelopa.json` 格式，且不会改动 localStorage；也可以把 `.penelopa.json` 直接拖到编辑页任意位置。导入可以在编辑、保存、再次导入或刷新之前撤销一次。
 
 ## 功能
 
@@ -39,8 +51,21 @@ Penelopa 在六区域可停靠工作区中承载 SkiaSharp 绘制画布、图元
 - 仿真只做预览，停止/离开（含浏览器后退）精确恢复基础值；Save 仅在 Ready
   可用；Dormant 轨道提供可展开明细、逐条/全部清理（可撤销）；v2 文档格式
   持久化活动仿真配置
+- 编辑页文档文件 I/O：导入/导出 `.penelopa.json` v2 文件；导入先解析并显示
+  图元/轨道数量与警告，确认后才替换，且不写 localStorage；导出使用与 Save
+  相同的负载，并在排除 Dormant 轨道时警告
+- 一次性 `Undo import` 恢复导入前的文档、选区、两套撤销/重做栈与仿真 Loop；
+  持久编辑、配置变更、成功 Save、再次导入/Load 或刷新后失效
+- 将 `.penelopa.json` 拖到编辑页任意位置可导入；工作区显示拖放遮罩，必要时
+  自动切到 Tools，使同一确认框可见。Import 按钮仍是键盘/可访问路径
+- 空编辑器提供内置 **Loop Study 01** v2 示例；加载后停留在编辑页并选中
+  `Step Indicator`，不会自动播放
+- 只读仿真画布隐藏编辑器的坐标轴，保持成品预览干净
 - 属性标签、内联错误、树选中状态和 polite 状态实时区域；允许浏览器页面缩放
 - 由 `--penelopa-*` CSS 变量驱动的明亮工作室主题（亮/暗双模式）
+
+> 导入撤销只在编辑页提供且仅一层；选中、视图、Export 与播放不会使它失效，
+> 真正的文档或仿真编辑才会。
 
 ## 项目结构
 
@@ -50,7 +75,7 @@ Penelopa 在六区域可停靠工作区中承载 SkiaSharp 绘制画布、图元
 | `src/Penelopa.Core`      | 无 UI 依赖的图元模型、历史、对齐与仿真引擎       |
 | `src/Penelopa.Rendering` | SkiaSharp 画布渲染与命中检测             |
 | `tests/`                 | xUnit、bUnit（UI）与 Playwright（E2E）测试 |
-| `docs/adr`               | 坐标空间、历史事务、选择模型、分组与仿真 ADR       |
+| `docs/adr`               | 坐标空间、历史事务、选择模型、分组、仿真与文件 I/O ADR |
 
 `Penelopa.Core` 不依赖 Blazor 或 SkiaSharp。画布上的浏览器输入通过颜色键缓冲区命中检测转换，经共享图元服务提交，再由 Blazor 投影回各面板。
 
@@ -144,6 +169,7 @@ NuGet 依赖的已知漏洞。本地普通 `dotnet restore` 可能更新锁文�
 | [ADR 0004](docs/adr/0004-grouping-deferred.md)           | 分组与取消分组现有图元                           |
 | [ADR 0005](docs/adr/0005-simulation-keyframe-timeline.md) | 关键帧仿真时间轴、预览隔离与持久化                  |
 | [ADR 0006](docs/adr/0006-simulation-atlas-workspace.md)  | 仿真 Atlas 工作区、受保护区域与布局重置            |
+| [ADR 0007](docs/adr/0007-document-file-import-export.md) | v2 JSON 文件导入/导出、内置示例与导入撤销            |
 
 GitHub Pages 部署工作流保持手动触发（`workflow_dispatch`），发布是显式操作。
 
