@@ -251,8 +251,11 @@ ESC、pointer-cancel、捕获丢失或窗口失焦恢复快照并回到 Idle。�
 `/simulation` 页面（`Pages/SimulationPage.razor`）与编辑页共享单例
 `IPrimitiveService` 与 `SimulationConfigStore`，但维护自己的本地选区。画布
 只读：无命中测试、拖拽、缩放或选区覆盖层；可见表面暴露为 `role="img"`，
-Fit 按钮仍是普通按钮。布局为固定三栏（图元树、画布、检视器）加传输条与
-全局时间轴。
+Fit 按钮仍是普通按钮。页面拥有独立的 `penelopa-simulation` Atlas 工作区：
+传输条与页面提示位于固定顶栏槽位，工作区包含受保护的图元树工具组、画布
+文档和受保护的检视器工具组，下方是通栏时间轴工具组。必需区域不可关闭或
+自动隐藏；工具组可调整大小、折叠、移动与重新分组，画布文档可调整与移动但
+不可关闭或分割。布局定义位于 `Components/Simulation/SimulationWorkspaceDefinition.cs`。
 
 `SimulationRuntime` 是确定性的预览会话。首次 Play/定位/步进时捕获所有
 Float 属性的基础值，把轨道解析为 Active/Dormant，并在请求时刻求值；运行时
@@ -329,8 +332,12 @@ Playwright 布局测试在各宽度断言画布宽度、无水平溢出，以及
 Add/Align/Properties 控件可见。另有特征测试记录：Atlas 0.3.0 不会把初始
 比例轨道钳位到 160px 最小宽度；若升级后行为改变，需要同步修订该测试与本节。
 
-仿真页为固定三栏加底部时间轴；列宽在 1024px 与 820px 处收窄，时间轴在缩放
-时横向滚动、轨道较多时纵向滚动，并复用 `--penelopa-*` 主题变量。
+仿真页使用 Atlas 工作区（`Components/Simulation/SimulationWorkspaceDefinition.cs`），
+默认为 220px 图元树、弹性画布、320px 检视器和 208px 通栏时间轴。Atlas 工具栏
+折叠以保持单一自定义顶栏；分割条控件可折叠图元树、检视器与时间轴，并用
+仿真页作用域的 CSS 保留折叠后的展开按钮——Atlas 0.3.0 会把折叠侧的分割条
+整体隐藏。画布是文档组，不可折叠。每次进入页面重建布局，不持久化。时间轴在
+缩放时横向滚动、轨道较多时纵向滚动，并复用 `--penelopa-*` 主题变量。
 
 ## 扩展图元与属性
 
@@ -342,7 +349,7 @@ Add/Align/Properties 控件可见。另有特征测试记录：Atlas 0.3.0 不�
 
 ## 高度链
 
-Atlas 工作区由其父级确定尺寸；编辑器外壳必须将 `html/body/#app/.penelopa-main/.penelopa-shell/.atlas-v2-workspace` 链到 100% 高度（见 `wwwroot/css/app.css`）。顶栏与状态栏在 Atlas 宿主内部渲染，分别位于工作区上方与下方。仿真页将 `.penelopa-simulation` 链入 `html/body/#app/.penelopa-main`，并使用自己的顶栏/主体/时间轴纵向 Flex 布局（见 `wwwroot/css/simulation.css`）。
+Atlas 工作区由其父级确定尺寸；编辑器外壳必须将 `html/body/#app/.penelopa-main/.penelopa-shell/.atlas-v2-workspace` 链到 100% 高度（见 `wwwroot/css/app.css`）。顶栏与状态栏在 Atlas 宿主内部渲染，分别位于工作区上方与下方。仿真页将 `.penelopa-simulation` 加入同一 100% 高度链，Atlas 宿主填满页面，顶部传输条与提示渲染在宿主的固定顶栏槽位（见 `wwwroot/css/simulation.css`）。
 
 ## 对齐语义
 

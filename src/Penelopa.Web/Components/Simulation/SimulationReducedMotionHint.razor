@@ -1,0 +1,48 @@
+@namespace Penelopa.Web.Components.Simulation
+@using Microsoft.JSInterop
+@implements IDisposable
+
+@if (_reducedMotion)
+{
+    <p class="penelopa-simulation-hint penelopa-simulation-reduced-motion">
+        Reduced motion is enabled in your browser. Playback still requires pressing Play.
+    </p>
+}
+
+@code {
+    private bool _reducedMotion;
+    private bool _disposed;
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = null!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _reducedMotion = await JS.InvokeAsync<bool>(
+                "penelopa.prefersReducedMotion");
+        }
+        catch (Exception ex) when (ex is JSException
+            or JSDisconnectedException
+            or InvalidOperationException)
+        {
+            _reducedMotion = false;
+        }
+
+        if (!_disposed && _reducedMotion)
+        {
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+    }
+}

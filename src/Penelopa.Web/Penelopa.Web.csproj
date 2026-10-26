@@ -24,6 +24,10 @@
     <ProjectReference Include="..\Penelopa.Rendering\Penelopa.Rendering.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Penelopa.Web.Tests" />
+  </ItemGroup>
+
   <!-- Compile the TypeScript pointer layer when the local npm toolchain is
        installed. ts/penelopa.ts is the source of truth and the generated
        wwwroot/js/penelopa.js is committed, so a clean checkout without Node

@@ -11,144 +11,167 @@
 
 <PageTitle>Simulation — Penelopa</PageTitle>
 
-<div class="penelopa-simulation">
-    <header class="penelopa-simulation-topbar">
-        <div class="penelopa-simulation-nav">
-            <button type="button"
-                    class="penelopa-tool-button penelopa-simulation-back"
-                    @onclick="BackToEditorAsync">Back to editor</button>
-            <h1 class="penelopa-simulation-title" tabindex="-1">Simulation</h1>
-            <button type="button"
-                    class="penelopa-tool-button"
-                    disabled="@(!CanSave || _pendingDormantSave)"
-                    aria-describedby="simulation-save-hint"
-                    title="@(CanSave ? "Save document and animation" : "Stop playback to save")"
-                    @onclick="SaveAsync">Save</button>
-            <span id="simulation-save-hint" class="penelopa-visually-hidden">
-                @(CanSave
-                    ? "Saves the document and active animation tracks."
-                    : "Stop playback to save the document.")
-            </span>
-        </div>
-        <SimulationTransport State="@RuntimeState"
-                             CanPlay="@CanPlay"
-                             CanStop="@CanStop"
-                             CanLoop="@CanLoop"
-                             CanStep="@CanStep"
-                             CanUndo="@CanUndoConfig"
-                             CanRedo="@CanRedoConfig"
-                             Loop="@LoopEnabled"
-                             Channel="@_readoutChannel"
-                             OnPlay="@PlayAsync"
-                             OnPause="@PauseAsync"
-                             OnStop="@StopAsync"
-                             OnStepBack="@StepBackAsync"
-                             OnStepForward="@StepForwardAsync"
-                             OnToggleLoop="@ToggleLoop"
-                             OnUndo="@UndoConfig"
-                             OnRedo="@RedoConfig" />
-    </header>
+<section class="penelopa-simulation penelopa-shell"
+         aria-label="Penelopa simulation workspace">
+    <AtlasWorkspaceHost Workspace="@_workspace"
+                        WorkspaceOwnership="WorkspaceOwnership.External"
+                        EnableInteractions="true"
+                        KeyboardCommands="@_layoutKeyboardCommands"
+                        SplitterPresentation="@ResolveSplitterPresentation">
+        <TopToolbarContent>
+            <div class="penelopa-simulation-chrome">
+                <header class="penelopa-simulation-topbar">
+                    <div class="penelopa-simulation-nav">
+                        <button type="button"
+                                class="penelopa-tool-button penelopa-simulation-back"
+                                @onclick="BackToEditorAsync">Back to editor</button>
+                        <h1 class="penelopa-simulation-title" tabindex="-1">Simulation</h1>
+                        <button type="button"
+                                class="penelopa-tool-button"
+                                disabled="@(!CanSave || _pendingDormantSave)"
+                                aria-describedby="simulation-save-hint"
+                                title="@(CanSave ? "Save document and animation" : "Stop playback to save")"
+                                @onclick="SaveAsync">Save</button>
+                        <span id="simulation-save-hint" class="penelopa-visually-hidden">
+                            @(CanSave
+                                ? "Saves the document and active animation tracks."
+                                : "Stop playback to save the document.")
+                        </span>
+                    </div>
+                    <SimulationTransport State="@RuntimeState"
+                                         CanPlay="@CanPlay"
+                                         CanStop="@CanStop"
+                                         CanLoop="@CanLoop"
+                                         CanStep="@CanStep"
+                                         CanUndo="@CanUndoConfig"
+                                         CanRedo="@CanRedoConfig"
+                                         Loop="@LoopEnabled"
+                                         Channel="@_readoutChannel"
+                                         OnPlay="@PlayAsync"
+                                         OnPause="@PauseAsync"
+                                         OnStop="@StopAsync"
+                                         OnStepBack="@StepBackAsync"
+                                         OnStepForward="@StepForwardAsync"
+                                         OnToggleLoop="@ToggleLoop"
+                                         OnUndo="@UndoConfig"
+                                         OnRedo="@RedoConfig" />
+                </header>
 
-    @if (_errorMessage is not null)
-    {
-        <p class="penelopa-simulation-error" role="alert">@_errorMessage</p>
-    }
-    <SimulationIssueSummary Issues="@_blockingIssues" />
-    @if (_saveMessage is not null)
-    {
-        <p class="penelopa-simulation-save-message @(_saveError ? "is-error" : string.Empty)"
-           role="@(_saveError ? "alert" : "status")">@_saveMessage</p>
-    }
-    @if (_pendingDormantSave)
-    {
-        <div class="penelopa-simulation-save-confirm" role="alert">
-            <span>@_dormantTracks.Count inactive track(s) will not be saved.</span>
-            <div class="penelopa-simulation-save-confirm-actions">
-                <button type="button"
-                        class="penelopa-tool-button"
-                        @onclick="SaveAsync">Save active only</button>
-                <button type="button"
-                        class="penelopa-tool-button"
-                        @onclick="CancelDormantSave">Cancel save</button>
+                @if (_errorMessage is not null)
+                {
+                    <p class="penelopa-simulation-error" role="alert">@_errorMessage</p>
+                }
+                <SimulationIssueSummary Issues="@_blockingIssues" />
+                @if (_saveMessage is not null)
+                {
+                    <p class="penelopa-simulation-save-message @(_saveError ? "is-error" : string.Empty)"
+                       role="@(_saveError ? "alert" : "status")">@_saveMessage</p>
+                }
+                @if (_pendingDormantSave)
+                {
+                    <div class="penelopa-simulation-save-confirm" role="alert">
+                        <span>@_dormantTracks.Count inactive track(s) will not be saved.</span>
+                        <div class="penelopa-simulation-save-confirm-actions">
+                            <button type="button"
+                                    class="penelopa-tool-button"
+                                    @onclick="SaveAsync">Save active only</button>
+                            <button type="button"
+                                    class="penelopa-tool-button"
+                                    @onclick="CancelDormantSave">Cancel save</button>
+                        </div>
+                    </div>
+                }
+                <SimulationReducedMotionHint />
+                @if (!CanPlay && _roots.Count > 0 && _errorMessage is null)
+                {
+                    <p class="penelopa-simulation-hint penelopa-simulation-empty-hint">
+                        No playable animation tracks. Add or fix tracks before playing.
+                    </p>
+                }
+                @if (_dormantTracks.Count > 0)
+                {
+                    <SimulationDormantTracks Tracks="@_dormantTracks"
+                                             CanEdit="@CanEditConfig"
+                                             OnRemove="@RemoveDormantTrack"
+                                             OnRemoveAll="@RemoveDormantTracks" />
+                }
             </div>
-        </div>
-    }
-    @if (_reducedMotion)
-    {
-        <p class="penelopa-simulation-hint penelopa-simulation-reduced-motion">
-            Reduced motion is enabled in your browser. Playback still requires pressing Play.
-        </p>
-    }
-    @if (!CanPlay && _roots.Count > 0 && _errorMessage is null)
-    {
-        <p class="penelopa-simulation-hint penelopa-simulation-empty-hint">
-            No playable animation tracks. Add or fix tracks before playing.
-        </p>
-    }
-    @if (_dormantTracks.Count > 0)
-    {
-        <SimulationDormantTracks Tracks="@_dormantTracks"
-                                 CanEdit="@CanEditConfig"
-                                 OnRemove="@RemoveDormantTrack"
-                                 OnRemoveAll="@RemoveDormantTracks" />
-    }
-
-    <div class="penelopa-simulation-body">
-        <aside class="penelopa-simulation-panel penelopa-simulation-tree-panel"
-               aria-label="Simulation primitives">
-            <SimulationTree Roots="@_roots"
-                            SelectedId="@_selectedId"
-                            Tracks="@ConfigStore.Config.Tracks"
-                            OnSelect="@SelectPrimitive" />
-        </aside>
-
-        <section class="penelopa-simulation-canvas-panel" aria-label="Simulation canvas">
-            <SimulationCanvas @ref="_canvas"
-                              Roots="@_roots"
-                              FitBounds="@_fitBounds"
-                              FitVersion="@_fitVersion"
-                              CanFit="@CanFit"
-                              RenderLoopEnabled="@(RuntimeState == SimulationState.Playing)"
-                              OnFitRequested="@FitSimulation" />
-            @if (_roots.Count == 0)
-            {
-                <p class="penelopa-simulation-canvas-empty">
-                    No primitives to preview.
-                </p>
-            }
-        </section>
-
-        <aside class="penelopa-simulation-panel penelopa-simulation-inspector-panel"
-               aria-label="Simulation inspector">
-            <SimulationInspector Primitive="@SelectedPrimitive"
-                                 Config="@ConfigStore.Config"
-                                 Channel="@_readoutChannel"
-                                 SelectedProperty="@_selectedProperty"
-                                 SelectedKeyframeIndex="@_selectedKeyframeIndex"
-                                 CanEdit="@CanEditConfig"
-                                 OnSelectTrack="@SelectTrack"
-                                 OnSelectKeyframe="@SelectKeyframe"
-                                 OnSeekRequested="@SeekToTimeAsync" />
-        </aside>
-    </div>
-
-    <footer class="penelopa-simulation-timeline" aria-label="Simulation timeline">
-        <SimulationTimeline Primitive="@SelectedPrimitive"
-                            Config="@ConfigStore.Config"
-                            Duration="@TimelineDuration"
-                            SelectedProperty="@_selectedProperty"
-                            SelectedKeyframeIndex="@_selectedKeyframeIndex"
-                            CanEdit="@CanEditConfig"
-                            Channel="@_readoutChannel"
-                            OnSelectKeyframe="@SelectKeyframe"
-                            OnSeekRequested="@SeekToTimeAsync" />
-    </footer>
-</div>
+        </TopToolbarContent>
+        <ContentRoutes>
+            <AtlasContentRoute Kind="@SimulationContentKinds.Tree">
+                <ChildContent>
+                    <aside class="penelopa-simulation-tree-panel"
+                           aria-label="Simulation primitives">
+                        <SimulationTree Roots="@_roots"
+                                        SelectedId="@_selectedId"
+                                        Tracks="@ConfigStore.Config.Tracks"
+                                        OnSelect="@SelectPrimitive" />
+                    </aside>
+                </ChildContent>
+            </AtlasContentRoute>
+            <AtlasContentRoute Kind="@SimulationContentKinds.Canvas">
+                <ChildContent>
+                    <div class="penelopa-simulation-canvas-panel">
+                        <SimulationCanvas @ref="_canvas"
+                                          Roots="@_roots"
+                                          FitBounds="@_fitBounds"
+                                          FitVersion="@_fitVersion"
+                                          CanFit="@CanFit"
+                                          RenderLoopEnabled="@(RuntimeState == SimulationState.Playing)"
+                                          OnFitRequested="@FitSimulation" />
+                        @if (_roots.Count == 0)
+                        {
+                            <p class="penelopa-simulation-canvas-empty">
+                                No primitives to preview.
+                            </p>
+                        }
+                    </div>
+                </ChildContent>
+            </AtlasContentRoute>
+            <AtlasContentRoute Kind="@SimulationContentKinds.Inspector">
+                <ChildContent>
+                    <aside class="penelopa-simulation-inspector-panel"
+                           aria-label="Simulation inspector">
+                        <SimulationInspector Primitive="@SelectedPrimitive"
+                                             Config="@ConfigStore.Config"
+                                             Channel="@_readoutChannel"
+                                             SelectedProperty="@_selectedProperty"
+                                             SelectedKeyframeIndex="@_selectedKeyframeIndex"
+                                             CanEdit="@CanEditConfig"
+                                             OnSelectTrack="@SelectTrack"
+                                             OnSelectKeyframe="@SelectKeyframe"
+                                             OnSeekRequested="@SeekToTimeAsync" />
+                    </aside>
+                </ChildContent>
+            </AtlasContentRoute>
+            <AtlasContentRoute Kind="@SimulationContentKinds.Timeline">
+                <ChildContent>
+                    <section class="penelopa-simulation-timeline"
+                             aria-label="Simulation timeline">
+                        <SimulationTimeline Primitive="@SelectedPrimitive"
+                                            Config="@ConfigStore.Config"
+                                            Duration="@TimelineDuration"
+                                            SelectedProperty="@_selectedProperty"
+                                            SelectedKeyframeIndex="@_selectedKeyframeIndex"
+                                            CanEdit="@CanEditConfig"
+                                            Channel="@_readoutChannel"
+                                            OnSelectKeyframe="@SelectKeyframe"
+                                            OnSeekRequested="@SeekToTimeAsync" />
+                    </section>
+                </ChildContent>
+            </AtlasContentRoute>
+        </ContentRoutes>
+    </AtlasWorkspaceHost>
+</section>
 
 @code {
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly SimulationReadoutChannel _readoutChannel = new();
+    private readonly AtlasKeyboardCommandMap _layoutKeyboardCommands =
+        new(AtlasKeyboardCommandMap.Default.Bindings.Where(
+            binding => binding.Command != AtlasKeyboardCommand.CloseActiveDocument));
 
+    private IAtlasWorkspace? _workspace;
     private IReadOnlyList<Primitive> _roots = Array.Empty<Primitive>();
     private SimulationPrimitiveIndex? _index;
     private SimulationRuntime? _runtime;
@@ -168,7 +191,6 @@
     private int _frameCount;
 
     private bool _disposed;
-    private bool _reducedMotion;
     private bool _pendingDormantSave;
     private bool _saveError;
     private string? _errorMessage;
@@ -178,6 +200,9 @@
 
     [Inject]
     private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    [Inject]
+    private IAtlasWorkspaceFactory Factory { get; set; } = null!;
 
     [Inject]
     private SimulationConfigStore ConfigStore { get; set; } = null!;
@@ -229,6 +254,15 @@
     {
         base.OnInitialized();
 
+        var workspaceResult = Factory.Create(SimulationWorkspaceDefinition.Create());
+        if (!workspaceResult.Succeeded || workspaceResult.Value is null)
+        {
+            throw new InvalidOperationException(
+                workspaceResult.Error?.DiagnosticId
+                ?? "Simulation workspace initialization failed.");
+        }
+
+        _workspace = workspaceResult.Value;
         _roots = PrimitiveService.GetAll();
         _index = SimulationPrimitiveIndex.Create(_roots);
         ConfigStore.ClearHistory();
@@ -255,18 +289,6 @@
             return;
         }
 
-        try
-        {
-            _reducedMotion = await JS.InvokeAsync<bool>(
-                "penelopa.prefersReducedMotion");
-        }
-        catch (Exception ex) when (ex is JSException
-            or JSDisconnectedException
-            or InvalidOperationException)
-        {
-            _reducedMotion = false;
-        }
-
         _dotNetRef ??= DotNetObjectReference.Create(this);
         try
         {
@@ -283,11 +305,18 @@
         {
             // 快捷键不可用时仍保留按钮操作
         }
+    }
 
-        if (!_disposed)
+    private static AtlasSplitterPresentation? ResolveSplitterPresentation(
+        LayoutNodeId splitId)
+    {
+        return splitId.Value switch
         {
-            StateHasChanged();
-        }
+            "work-area" => new AtlasSplitterPresentation(canCollapseFirst: true),
+            "right" => new AtlasSplitterPresentation(canCollapseSecond: true),
+            "root" => new AtlasSplitterPresentation(canCollapseSecond: true),
+            _ => null,
+        };
     }
 
     private void SelectPrimitive(Primitive primitive)
@@ -961,5 +990,11 @@
         await StopFrameLoopAsync();
         _runtime?.Stop();
         _dotNetRef?.Dispose();
+
+        if (_workspace is not null)
+        {
+            await _workspace.DisposeAsync();
+            _workspace = null;
+        }
     }
 }
