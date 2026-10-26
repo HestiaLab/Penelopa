@@ -522,6 +522,83 @@ h1:focus {
     color: var(--penelopa-danger);
 }
 
+.penelopa-color-field {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    min-inline-size: 0;
+}
+
+.penelopa-color-field > .penelopa-prop-label {
+    padding: 0;
+}
+
+.penelopa-color-editor {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.4rem;
+}
+
+.penelopa-color-swatch {
+    flex: none;
+    width: 2.1rem;
+    height: 2.1rem;
+    box-sizing: border-box;
+    border: 1px solid var(--penelopa-border);
+    border-radius: 0.25rem;
+    overflow: hidden;
+    background-color: #fff;
+    /* 半透明颜色下的棋盘格底纹 */
+    background-image: repeating-conic-gradient(#d9d9d9 0% 25%, #fff 0% 50%);
+    background-size: 10px 10px;
+}
+
+.penelopa-color-swatch.is-mixed {
+    background-image: repeating-linear-gradient(
+        45deg,
+        #d9d9d9 0 4px,
+        #fff 4px 8px);
+}
+
+.penelopa-color-swatch-fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.penelopa-color-channels {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.3rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.penelopa-color-channel {
+    min-width: 0;
+}
+
+.penelopa-color-channel-label {
+    display: block;
+    margin-bottom: 0.2rem;
+    font-size: 0.68rem;
+    line-height: 1;
+    text-align: center;
+    color: var(--penelopa-muted);
+}
+
+.penelopa-properties .penelopa-color-channel-input {
+    padding: 0.3rem 0.25rem;
+    text-align: center;
+}
+
+.penelopa-color-conflict {
+    margin: 0.3rem 0 0;
+    font-size: 0.72rem;
+    color: var(--penelopa-muted);
+}
+
 .penelopa-canvas-scroll {
     width: 100%;
     height: 100%;

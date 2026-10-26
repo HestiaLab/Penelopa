@@ -41,6 +41,20 @@ public class DocumentSerializerTests
     }
 
     [Fact]
+    public void RoundTrip_ColorProp_PreservesPackedArgb()
+    {
+        var circle = new Circle();
+        Assert.True(circle.Color.TrySetText("#11223344", out _));
+
+        var json = DocumentSerializer.Serialize(new Primitive[] { circle }, Array.Empty<Primitive>());
+        var result = DocumentSerializer.Deserialize(json)!;
+
+        var loaded = Assert.IsType<Circle>(Assert.Single(result.Roots));
+        Assert.Equal(0x44112233u, loaded.Color.Value);
+        Assert.Equal("#11223344", loaded.Color.ToHex());
+    }
+
+    [Fact]
     public void RoundTrip_NestedContainer_PreservesHierarchyAndKind()
     {
         var container = Container.CreateRotation("rot", 45f);

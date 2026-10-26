@@ -23,7 +23,7 @@ public abstract class PropEditorBase : ComponentBase
 
     protected string Text { get; private set; } = string.Empty;
 
-    protected string? Error { get; private set; }
+    protected string? Error { get; set; }
 
     protected bool HasConflict { get; private set; }
 
@@ -49,8 +49,11 @@ public abstract class PropEditorBase : ComponentBase
     }
 
     protected void OnChange(ChangeEventArgs e)
+        => Commit(e.Value?.ToString() ?? string.Empty);
+
+    /// <summary>把文本提交给领域层；成功时刷新显示值，失败时保留用户输入并显示错误。</summary>
+    protected bool Commit(string text)
     {
-        var text = e.Value?.ToString() ?? string.Empty;
         Text = text;
 
         // 冲突占位不提交：清空输入框本身不代表“把属性设为空”
@@ -58,18 +61,23 @@ public abstract class PropEditorBase : ComponentBase
         {
             Error = null;
             RefreshFromOwners();
-            return;
+            return true;
         }
 
         if (PrimitiveService.TrySetProperty(Owners, PropValue.Name, text, out var error))
         {
             Error = null;
             RefreshFromOwners();
+            return true;
         }
-        else
-        {
-            Error = error;
-        }
+
+        Error = error;
+        return false;
+    }
+
+    /// <summary>从所有权图元重新读取当前值后调用，供结构化编辑器同步自己的显示状态。</summary>
+    protected virtual void OnRefreshed()
+    {
     }
 
     private void RefreshFromOwners()
@@ -78,6 +86,7 @@ public abstract class PropEditorBase : ComponentBase
         {
             Text = string.Empty;
             HasConflict = false;
+            OnRefreshed();
             return;
         }
 
@@ -90,6 +99,7 @@ public abstract class PropEditorBase : ComponentBase
             {
                 Text = string.Empty;
                 HasConflict = true;
+                OnRefreshed();
                 return;
             }
 
@@ -98,6 +108,7 @@ public abstract class PropEditorBase : ComponentBase
 
         HasConflict = values.Distinct().Count() > 1;
         Text = HasConflict ? string.Empty : Format(PropValue);
+        OnRefreshed();
     }
 
     private string BuildFieldId()

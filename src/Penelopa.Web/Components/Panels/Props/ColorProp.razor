@@ -1,0 +1,133 @@
+@namespace Penelopa.Web.Components.Panels.Props
+@using System.Globalization
+@using Penelopa.Core.Primitives
+@inherits PropEditorBase
+
+<fieldset class="penelopa-prop-field penelopa-color-field">
+    <legend class="penelopa-prop-label">@PropValue.Name</legend>
+    <div class="penelopa-color-editor">
+        <span class="penelopa-color-swatch@(HasConflict ? " is-mixed" : string.Empty)" aria-hidden="true">
+            @if (!HasConflict)
+            {
+                <span class="penelopa-color-swatch-fill" style="background-color: @SwatchColor"></span>
+            }
+        </span>
+        @for (var index = 0; index < ChannelNames.Length; index++)
+        {
+            var channel = index;
+            <div class="penelopa-color-channel">
+                <label class="penelopa-color-channel-label" for="@ChannelId(channel)">@ChannelNames[channel]</label>
+                <input id="@ChannelId(channel)"
+                       type="number"
+                       min="0"
+                       max="255"
+                       step="1"
+                       class="penelopa-prop-input penelopa-color-channel-input@(channel == _invalidChannel ? " is-invalid" : string.Empty)"
+                       value="@_channelTexts[channel]"
+                       aria-invalid="@(channel == _invalidChannel ? "true" : null)"
+                       aria-describedby="@(Error is not null && (_invalidChannel < 0 || _invalidChannel == channel) ? ErrorId : null)"
+                       @oninput="args => OnChannelInput(channel, args)"
+                       @onchange="args => OnChannelChange(channel, args)" />
+            </div>
+        }
+    </div>
+    @if (HasConflict)
+    {
+        <p class="penelopa-color-conflict">Multiple values</p>
+    }
+    @if (Error is not null)
+    {
+        <div id="@ErrorId" class="penelopa-prop-error" role="alert">@Error</div>
+    }
+</fieldset>
+
+@code {
+    private static readonly string[] ChannelNames = { "R", "G", "B", "A" };
+
+    private readonly string[] _channelTexts = { string.Empty, string.Empty, string.Empty, string.Empty };
+    private int _invalidChannel = -1;
+
+    private string ChannelId(int channel) => $"{FieldId}-{ChannelNames[channel].ToLowerInvariant()}";
+
+    private string SwatchColor
+    {
+        get
+        {
+            var color = Color.FromUint(((ColorPropValue)PropValue).Value);
+            return FormattableString.Invariant(
+                $"rgba({color.R}, {color.G}, {color.B}, {color.A / 255d:0.###})");
+        }
+    }
+
+    protected override string Format(PropValue property)
+        => ((ColorPropValue)property).ToHex();
+
+    protected override void OnRefreshed()
+    {
+        _invalidChannel = -1;
+        if (HasConflict || Owners.Count == 0)
+        {
+            Array.Fill(_channelTexts, string.Empty);
+            return;
+        }
+
+        var color = Color.FromUint(((ColorPropValue)PropValue).Value);
+        _channelTexts[0] = color.R.ToString(CultureInfo.InvariantCulture);
+        _channelTexts[1] = color.G.ToString(CultureInfo.InvariantCulture);
+        _channelTexts[2] = color.B.ToString(CultureInfo.InvariantCulture);
+        _channelTexts[3] = color.A.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void OnChannelInput(int channel, ChangeEventArgs e)
+        => _channelTexts[channel] = e.Value?.ToString() ?? string.Empty;
+
+    private void OnChannelChange(int channel, ChangeEventArgs e)
+    {
+        _channelTexts[channel] = e.Value?.ToString() ?? string.Empty;
+
+        if (!byte.TryParse(_channelTexts[channel], NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+        {
+            _invalidChannel = channel;
+            Error = $"{ChannelNames[channel]} must be a whole number between 0 and 255.";
+            return;
+        }
+
+        // 多选冲突时四个通道从空值开始，填满一整组 RGBA 后再统一写入。
+        if (HasConflict && _channelTexts.Any(string.IsNullOrWhiteSpace))
+        {
+            _invalidChannel = -1;
+            Error = null;
+            return;
+        }
+
+        if (!TryBuildHex(out var hex))
+        {
+            _invalidChannel = channel;
+            Error = "Enter R, G, B and A as whole numbers between 0 and 255.";
+            return;
+        }
+
+        _invalidChannel = -1;
+        Commit(hex);
+    }
+
+    private bool TryBuildHex(out string hex)
+    {
+        Span<byte> channels = stackalloc byte[4];
+        for (var index = 0; index < channels.Length; index++)
+        {
+            if (!byte.TryParse(
+                    _channelTexts[index],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out channels[index]))
+            {
+                hex = string.Empty;
+                return false;
+            }
+        }
+
+        hex = $"#{channels[0]:X2}{channels[1]:X2}{channels[2]:X2}{channels[3]:X2}";
+        return true;
+    }
+}

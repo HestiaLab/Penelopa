@@ -225,6 +225,73 @@ public class PanelStateTests : TestContext
     }
 
     [Fact]
+    public void PropertyPanel_EditsColorThroughRgbaChannels()
+    {
+        var circle = new Circle();
+        _service.Add(circle);
+        _service.SetSelected(circle);
+        var cut = RenderComponent<PropertyPanel>();
+
+        ColorChannel(cut, "R").Change("0");
+
+        cut.WaitForAssertion(() => Assert.Equal(0xFF00FFFFu, circle.Color.Value));
+        Assert.Equal("0", ColorChannel(cut, "R").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void PropertyPanel_RejectsOutOfRangeColorChannel()
+    {
+        var circle = new Circle();
+        _service.Add(circle);
+        _service.SetSelected(circle);
+        var cut = RenderComponent<PropertyPanel>();
+
+        ColorChannel(cut, "G").Change("256");
+
+        cut.WaitForAssertion(() =>
+        {
+            var input = ColorChannel(cut, "G");
+            var error = Field(cut, "Color").QuerySelector(".penelopa-prop-error")!;
+            Assert.Equal("true", input.GetAttribute("aria-invalid"));
+            Assert.Equal(error.Id, input.GetAttribute("aria-describedby"));
+            Assert.Contains("G", error.TextContent);
+        });
+        Assert.Equal(0xFFFFFFFFu, circle.Color.Value);
+    }
+
+    [Fact]
+    public async Task PropertyPanel_MultiSelectionColorChannelsWriteOneUndoEntry()
+    {
+        var first = new Circle { Color = { Value = 0xFFFF0000u } };
+        var second = new Circle { Color = { Value = 0xFF0000FFu } };
+        _service.Add(first);
+        _service.Add(second);
+        _service.SetSelectedRange(new Primitive[] { first, second });
+        var cut = RenderComponent<PropertyPanel>();
+
+        Assert.All(Field(cut, "Color").QuerySelectorAll("input"), input =>
+            Assert.Equal(string.Empty, input.GetAttribute("value")));
+        Assert.Equal(
+            "Multiple values",
+            Field(cut, "Color").QuerySelector(".penelopa-color-conflict")!.TextContent.Trim());
+
+        ColorChannel(cut, "R").Change("0");
+        ColorChannel(cut, "G").Change("255");
+        ColorChannel(cut, "B").Change("0");
+        ColorChannel(cut, "A").Change("128");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(0x8000FF00u, first.Color.Value);
+            Assert.Equal(0x8000FF00u, second.Color.Value);
+        });
+
+        await cut.InvokeAsync(() => _service.Undo());
+        Assert.Equal(0xFFFF0000u, first.Color.Value);
+        Assert.Equal(0xFF0000FFu, second.Color.Value);
+    }
+
+    [Fact]
     public void TreePanel_InitializesFromExistingDocument()
     {
         var container = Container.CreateOffset("Offset Container", 0f, 0f);
@@ -262,8 +329,14 @@ public class PanelStateTests : TestContext
 
     private static AngleSharp.Dom.IElement? FieldOrNull(IRenderedFragment cut, string name)
         => cut.FindAll(".penelopa-prop-field").SingleOrDefault(
-            field => field.QuerySelector("label")?.TextContent.Trim() == name);
+            field => field.QuerySelector(".penelopa-prop-label")?.TextContent.Trim() == name);
 
     private static AngleSharp.Dom.IElement RadiusInput(IRenderedFragment cut)
         => Field(cut, "Radius").QuerySelector("input")!;
+
+    private static AngleSharp.Dom.IElement ColorChannel(IRenderedFragment cut, string channel)
+        => Field(cut, "Color")
+            .QuerySelectorAll(".penelopa-color-channel")
+            .Single(element => element.QuerySelector("label")?.TextContent.Trim() == channel)
+            .QuerySelector("input")!;
 }

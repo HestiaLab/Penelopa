@@ -25,11 +25,11 @@ Pure domain logic with no UI or SkiaSharp dependency:
 
 - `Primitives/` — `Primitive` base class and `Circle` / `Rectangle` / `Triangle`
   subclasses, each exposing an editable `PropValue` property bag (`Float`,
-  `Double`, `Int`, `Uint`, `Bool`, `String`). `PropValue.TrySetText` validates
-  input in the domain (finite numbers, positive dimensions, uint color range,
-  trimmed non-empty names up to 128 characters). Unknown `PropValue`
-  subclasses throw `NotSupportedException` from history/serialization instead
-  of being silently dropped.
+  `Double`, `Int`, `Uint`, `Color`, `Bool`, `String`). `PropValue.TrySetText`
+  validates input in the domain (finite numbers, positive dimensions,
+  `#RRGGBB`/`#RRGGBBAA` color text, trimmed non-empty names up to 128
+  characters). Unknown `PropValue` subclasses throw `NotSupportedException`
+  from history/serialization instead of being silently dropped.
 - `Alignment/` — `AlignType` enum (Left/HCenter/Right/Top/VCenter/Bottom),
   `Box` (axis-aligned bounding box), `Transform`, and `AlignExtensions.Align`
   which moves all selected items so their alignment value matches the union
@@ -281,7 +281,8 @@ key handling.
 
 Property inputs are validated in the domain (`PropValue.TrySetText`):
 radius/width/height must be positive, numeric values must be finite and
-within the editor magnitude, color must fit `uint`, and names are trimmed,
+within the editor magnitude, colors accept `#RRGGBB`/`#RRGGBBAA` (the
+properties panel edits them as R/G/B/A channels), and names are trimmed,
 non-empty and at most 128 characters. Invalid text shows
 a field error and is never written; deserialization validates every
 property with the same rules and rejects the document if a value is
