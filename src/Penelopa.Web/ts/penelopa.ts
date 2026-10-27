@@ -60,7 +60,8 @@ interface PenelopaNamespace {
     getDpr(): number;
     watchDpr(dotNetRef: DotNetRef): DprWatchHandle;
     attachPointer(canvasEl: HTMLElement, dotNetRef: DotNetRef): PointerLayerHandle;
-    attachFileDrop(rootEl: HTMLElement): DropZoneHandle;
+    attachFileDrop(rootEl: HTMLElement, dotNetRef: DotNetRef): DropZoneHandle;
+    resetFileInput(containerSelector: string): void;
     startSimulationLoop(dotNetRef: DotNetRef): FrameLoopHandle;
     attachSimulationKeyboard(dotNetRef: DotNetRef): KeyboardHandle;
     getElementRect(element: HTMLElement): ElementRect;
@@ -151,13 +152,37 @@ window.penelopa.downloadTextFile = function (fileName: string, content: string):
     }
 };
 
+// 重复选择同一文件：导入读取完成后清空隐藏 input 的值，
+// 使下一次选择同一文件仍会触发 change/确认。
+window.penelopa.resetFileInput = function (containerSelector: string): void {
+    const input = document.querySelector(
+        containerSelector + ' input[type="file"]');
+    if (input instanceof HTMLInputElement) {
+        try {
+            input.value = '';
+        } catch {
+            /* 部分浏览器在读取期间拒绝清空；下一次选择仍可能触发 change */
+        }
+    }
+};
+
 // 编辑页工作区的文件拖放层。拖放产生的 FileList 交给现有 InputFile，
 // 因而复用同一套确认、替换和取消逻辑；如果当前不在 Tools 标签，
-// 会先激活它，再等待输入控件挂载。
-window.penelopa.attachFileDrop = function (rootEl: HTMLElement): DropZoneHandle {
+// 会先激活它，再等待输入控件挂载。操作进行中或控件不可用时，
+// 通过 OnFileDropRejected 回调在工作区显示可见提示，而不是静默丢弃。
+window.penelopa.attachFileDrop = function (
+    rootEl: HTMLElement,
+    dotNetRef: DotNetRef): DropZoneHandle {
     let depth = 0;
     let disposed = false;
     let dropToken = 0;
+
+    const busyMessage =
+        'A document operation is in progress. The dropped file was not imported.';
+    const unavailableMessage =
+        'The import control is not available. Open Tools and try again.';
+    const attachFailedMessage =
+        'The dropped file could not be attached to the import control.';
 
     const hasFiles = (event: DragEvent): boolean => {
         const types = event.dataTransfer?.types;
@@ -173,6 +198,10 @@ window.penelopa.attachFileDrop = function (rootEl: HTMLElement): DropZoneHandle 
         rootEl.classList.remove('penelopa-drop-active');
     };
 
+    const reject = (message: string): void => {
+        invoke(dotNetRef, 'OnFileDropRejected', message);
+    };
+
     const findInput = (): HTMLInputElement | null => {
         const input = rootEl.querySelector(
             '.penelopa-file-button input[type="file"]');
@@ -183,7 +212,8 @@ window.penelopa.attachFileDrop = function (rootEl: HTMLElement): DropZoneHandle 
         const tabs = rootEl.querySelectorAll<HTMLElement>('[role="tab"]');
         for (const tab of Array.from(tabs)) {
             if ((tab.textContent ?? '').trim() === 'Tools') {
-                if (tab.getAttribute('aria-selected') !== 'true') {
+                // Atlas 以属性存在表示选中（aria-selected="" 也是选中）。
+                if (!tab.hasAttribute('aria-selected')) {
                     tab.click();
                 }
                 return;
@@ -197,7 +227,13 @@ window.penelopa.attachFileDrop = function (rootEl: HTMLElement): DropZoneHandle 
         }
 
         const input = findInput();
-        if (!input || input.disabled) {
+        if (!input) {
+            reject(unavailableMessage);
+            return;
+        }
+
+        if (input.disabled) {
+            reject(busyMessage);
             return;
         }
 
@@ -212,6 +248,7 @@ window.penelopa.attachFileDrop = function (rootEl: HTMLElement): DropZoneHandle 
             input.dispatchEvent(new Event('change', { bubbles: true }));
         } catch (error) {
             console.error('[Penelopa] file drop failed', error);
+            reject(attachFailedMessage);
         }
     };
 
@@ -221,14 +258,19 @@ window.penelopa.attachFileDrop = function (rootEl: HTMLElement): DropZoneHandle 
         }
 
         const input = findInput();
-        if (input && !input.disabled) {
+        if (input) {
+            if (input.disabled) {
+                reject(busyMessage);
+                return;
+            }
+
             // 新挂载的 InputFile 在 DOM 出现后还要一帧才完成事件绑定。
             setTimeout(() => assign(files, token), 100);
             return;
         }
 
         if (attempts <= 0) {
-            console.warn('[Penelopa] file drop could not find the import input');
+            reject(unavailableMessage);
             return;
         }
 

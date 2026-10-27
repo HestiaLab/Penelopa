@@ -100,12 +100,13 @@ public sealed class DocumentStorage
                 return new DocumentLoadResult(null, "No saved document was found.");
             }
 
-            var result = DocumentSerializer.Deserialize(json);
+            var result = DocumentSerializer.Deserialize(json, out var rejectedVersion);
             if (result is null)
             {
                 return new DocumentLoadResult(
                     null,
-                    "The saved document is invalid or unsupported.");
+                    DescribeVersionRejection(rejectedVersion)
+                        ?? "The saved document is invalid or unsupported.");
             }
 
             return new DocumentLoadResult(result, null);
@@ -118,6 +119,17 @@ public sealed class DocumentStorage
                 null,
                 $"The saved document could not be read: {DescribeFailure(ex)}");
         }
+    }
+
+    private static string? DescribeVersionRejection(int? rejectedVersion)
+    {
+        return rejectedVersion switch
+        {
+            0 => "The saved document has no supported version. Only version 2 documents are supported.",
+            1 => "The saved document uses document version 1, which is no longer supported. It was not loaded; export it with an older release before upgrading.",
+            > 2 => $"The saved document uses version {rejectedVersion}, which is newer than this app supports. It was not loaded.",
+            _ => null,
+        };
     }
 
     private async Task<(bool Success, string? Value, string? Error)> ReadStorageAsync(

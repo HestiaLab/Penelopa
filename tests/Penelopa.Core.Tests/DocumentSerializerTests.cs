@@ -87,7 +87,7 @@ public class DocumentSerializerTests
     [Fact]
     public void Deserialize_UnknownType_ReturnsNull()
     {
-        var json = "{\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"Hexagon\", \"Props\": {}}]}";
+        var json = "{\"Version\":2,\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"Hexagon\", \"Props\": {}}]}";
 
         Assert.Null(DocumentSerializer.Deserialize(json));
     }
@@ -97,7 +97,7 @@ public class DocumentSerializerTests
     {
         // A string where a number is expected: applying the property throws on
         // the type mismatch, and Deserialize must swallow it rather than crash.
-        var json = "{\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"Rectangle\", \"Props\": {\"Width\": \"wide\"}}]}";
+        var json = "{\"Version\":2,\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"Rectangle\", \"Props\": {\"Width\": \"wide\"}}]}";
 
         Assert.Null(DocumentSerializer.Deserialize(json));
     }
@@ -112,7 +112,7 @@ public class DocumentSerializerTests
     }
 
     [Fact]
-    public void Deserialize_LegacyDocumentWithoutVersion_IsAccepted()
+    public void Deserialize_DocumentWithoutVersion_IsRejectedAsVersionZero()
     {
         const string json = @"{
           ""Primitives"": [
@@ -121,16 +121,20 @@ public class DocumentSerializerTests
           ""SelectionIds"": []
         }";
 
-        var result = DocumentSerializer.Deserialize(json);
+        var result = DocumentSerializer.Deserialize(json, out var rejectedVersion);
 
-        Assert.NotNull(result);
-        Assert.IsType<Rectangle>(Assert.Single(result!.Roots));
+        Assert.Null(result);
+        Assert.Equal(0, rejectedVersion);
     }
 
     [Theory]
-    [InlineData("99")]
-    [InlineData("-1")]
-    public void Deserialize_UnknownOrNegativeVersion_ReturnsNull(string version)
+    [InlineData("1", 1)]
+    [InlineData("3", 3)]
+    [InlineData("99", 99)]
+    [InlineData("-1", -1)]
+    public void Deserialize_UnsupportedVersion_ReturnsNullAndReportsVersion(
+        string version,
+        int expectedRejectedVersion)
     {
         var json = $@"{{
           ""Version"": {version},
@@ -140,14 +144,43 @@ public class DocumentSerializerTests
           ""SelectionIds"": []
         }}";
 
-        Assert.Null(DocumentSerializer.Deserialize(json));
+        var result = DocumentSerializer.Deserialize(json, out var rejectedVersion);
+
+        Assert.Null(result);
+        Assert.Equal(expectedRejectedVersion, rejectedVersion);
+    }
+
+    [Fact]
+    public void Deserialize_InvalidJson_ReportsNoRejectedVersion()
+    {
+        var result = DocumentSerializer.Deserialize("not json {", out var rejectedVersion);
+
+        Assert.Null(result);
+        Assert.Null(rejectedVersion);
+    }
+
+    [Fact]
+    public void Deserialize_StructuralError_ReportsNoRejectedVersion()
+    {
+        const string json = @"{
+          ""Version"": 2,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000000"", ""Type"": ""Rectangle"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        var result = DocumentSerializer.Deserialize(json, out var rejectedVersion);
+
+        Assert.Null(result);
+        Assert.Null(rejectedVersion);
     }
 
     [Fact]
     public void Deserialize_DuplicateIds_ReturnsNull()
     {
         const string json = @"{
-          ""Version"": 1,
+          ""Version"": 2,
           ""Primitives"": [
             { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" },
             { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Circle"" }
@@ -162,7 +195,7 @@ public class DocumentSerializerTests
     public void Deserialize_EmptyId_ReturnsNull()
     {
         const string json = @"{
-          ""Version"": 1,
+          ""Version"": 2,
           ""Primitives"": [
             { ""Id"": ""00000000-0000-0000-0000-000000000000"", ""Type"": ""Rectangle"" }
           ],
@@ -176,7 +209,7 @@ public class DocumentSerializerTests
     public void Deserialize_ChildrenOnNonContainer_ReturnsNull()
     {
         const string json = @"{
-          ""Version"": 1,
+          ""Version"": 2,
           ""Primitives"": [
             {
               ""Id"": ""00000000-0000-0000-0000-000000000001"",
@@ -212,7 +245,7 @@ public class DocumentSerializerTests
     [Fact]
     public void Deserialize_TooManyNodes_ReturnsNull()
     {
-        var builder = new StringBuilder("{\"Version\":1,\"Primitives\":[");
+        var builder = new StringBuilder("{\"Version\":2,\"Primitives\":[");
         for (var i = 0; i <= DocumentSerializer.MaxNodes; i++)
         {
             if (i > 0)
@@ -240,7 +273,7 @@ public class DocumentSerializerTests
     public void Deserialize_DuplicateSelectionIds_AreDeduplicated()
     {
         const string json = @"{
-          ""Version"": 1,
+          ""Version"": 2,
           ""Primitives"": [
             { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
           ],
@@ -260,7 +293,7 @@ public class DocumentSerializerTests
     public void ResolveSelection_MapsKnownIdsAndIgnoresUnknown()
     {
         const string json = @"{
-          ""Version"": 1,
+          ""Version"": 2,
           ""Primitives"": [
             {
               ""Id"": ""00000000-0000-0000-0000-000000000001"",

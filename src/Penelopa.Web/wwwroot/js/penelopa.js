@@ -70,13 +70,30 @@ window.penelopa.downloadTextFile = function (fileName, content) {
         setTimeout(() => URL.revokeObjectURL(url), 0);
     }
 };
+// 重复选择同一文件：导入读取完成后清空隐藏 input 的值，
+// 使下一次选择同一文件仍会触发 change/确认。
+window.penelopa.resetFileInput = function (containerSelector) {
+    const input = document.querySelector(containerSelector + ' input[type="file"]');
+    if (input instanceof HTMLInputElement) {
+        try {
+            input.value = '';
+        }
+        catch (_a) {
+            /* 部分浏览器在读取期间拒绝清空；下一次选择仍可能触发 change */
+        }
+    }
+};
 // 编辑页工作区的文件拖放层。拖放产生的 FileList 交给现有 InputFile，
 // 因而复用同一套确认、替换和取消逻辑；如果当前不在 Tools 标签，
-// 会先激活它，再等待输入控件挂载。
-window.penelopa.attachFileDrop = function (rootEl) {
+// 会先激活它，再等待输入控件挂载。操作进行中或控件不可用时，
+// 通过 OnFileDropRejected 回调在工作区显示可见提示，而不是静默丢弃。
+window.penelopa.attachFileDrop = function (rootEl, dotNetRef) {
     let depth = 0;
     let disposed = false;
     let dropToken = 0;
+    const busyMessage = 'A document operation is in progress. The dropped file was not imported.';
+    const unavailableMessage = 'The import control is not available. Open Tools and try again.';
+    const attachFailedMessage = 'The dropped file could not be attached to the import control.';
     const hasFiles = (event) => {
         var _a;
         const types = (_a = event.dataTransfer) === null || _a === void 0 ? void 0 : _a.types;
@@ -89,6 +106,9 @@ window.penelopa.attachFileDrop = function (rootEl) {
         depth = 0;
         rootEl.classList.remove('penelopa-drop-active');
     };
+    const reject = (message) => {
+        invoke(dotNetRef, 'OnFileDropRejected', message);
+    };
     const findInput = () => {
         const input = rootEl.querySelector('.penelopa-file-button input[type="file"]');
         return input ? input : null;
@@ -98,7 +118,8 @@ window.penelopa.attachFileDrop = function (rootEl) {
         const tabs = rootEl.querySelectorAll('[role="tab"]');
         for (const tab of Array.from(tabs)) {
             if (((_a = tab.textContent) !== null && _a !== void 0 ? _a : '').trim() === 'Tools') {
-                if (tab.getAttribute('aria-selected') !== 'true') {
+                // Atlas 以属性存在表示选中（aria-selected="" 也是选中）。
+                if (!tab.hasAttribute('aria-selected')) {
                     tab.click();
                 }
                 return;
@@ -110,7 +131,12 @@ window.penelopa.attachFileDrop = function (rootEl) {
             return;
         }
         const input = findInput();
-        if (!input || input.disabled) {
+        if (!input) {
+            reject(unavailableMessage);
+            return;
+        }
+        if (input.disabled) {
+            reject(busyMessage);
             return;
         }
         try {
@@ -125,6 +151,7 @@ window.penelopa.attachFileDrop = function (rootEl) {
         }
         catch (error) {
             console.error('[Penelopa] file drop failed', error);
+            reject(attachFailedMessage);
         }
     };
     const deliver = (files, attempts, token) => {
@@ -132,13 +159,17 @@ window.penelopa.attachFileDrop = function (rootEl) {
             return;
         }
         const input = findInput();
-        if (input && !input.disabled) {
+        if (input) {
+            if (input.disabled) {
+                reject(busyMessage);
+                return;
+            }
             // 新挂载的 InputFile 在 DOM 出现后还要一帧才完成事件绑定。
             setTimeout(() => assign(files, token), 100);
             return;
         }
         if (attempts <= 0) {
-            console.warn('[Penelopa] file drop could not find the import input');
+            reject(unavailableMessage);
             return;
         }
         activateToolsTab();

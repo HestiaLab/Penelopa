@@ -71,12 +71,19 @@ public sealed class DocumentFileService
             await using var stream = file.OpenReadStream(
                 DocumentSerializer.MaxDocumentBytes,
                 cancellationToken);
+            // 严格 UTF-8：接受 BOM，但拒绝 UTF-16/32 与非法字节序列。
             using var reader = new StreamReader(
                 stream,
-                Encoding.UTF8,
-                detectEncodingFromByteOrderMarks: true);
-            var json = await reader.ReadToEndAsync();
+                new UTF8Encoding(
+                    encoderShouldEmitUTF8Identifier: false,
+                    throwOnInvalidBytes: true),
+                detectEncodingFromByteOrderMarks: false);
+            var json = (await reader.ReadToEndAsync()).TrimStart('\uFEFF');
             return Parse(file.Name, json);
+        }
+        catch (DecoderFallbackException)
+        {
+            return Failure(file.Name, "The file must be UTF-8 encoded.");
         }
         catch (Exception ex) when (ex is IOException
             or JSException
@@ -97,6 +104,11 @@ public sealed class DocumentFileService
         {
             var json = await _http.GetStringAsync(SamplePath, cancellationToken);
             return Parse(SampleFileName, json);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 调用方主动取消（画布已变化）不是加载失败，交给 UI 显示取消提示。
+            throw;
         }
         catch (Exception ex) when (ex is HttpRequestException
             or TaskCanceledException
@@ -149,10 +161,20 @@ public sealed class DocumentFileService
 
     private static DocumentFileLoadResult Parse(string fileName, string json)
     {
-        var document = DocumentSerializer.Deserialize(json);
-        return document is null
-            ? Failure(fileName, "This is not a valid or supported Penelopa document.")
-            : new DocumentFileLoadResult(fileName, document, null);
+        var document = DocumentSerializer.Deserialize(json, out var rejectedVersion);
+        if (document is not null)
+        {
+            return new DocumentFileLoadResult(fileName, document, null);
+        }
+
+        var error = rejectedVersion switch
+        {
+            0 => "This file has no supported document version. Only version 2 files can be imported.",
+            1 => "This file uses document version 1, which is no longer supported. Only version 2 files can be imported.",
+            > 2 => $"This file uses version {rejectedVersion}, which is newer than this app supports. Only version 2 files can be imported.",
+            _ => "This is not a valid or supported Penelopa document.",
+        };
+        return Failure(fileName, error);
     }
 
     private static DocumentFileLoadResult Failure(string fileName, string error)

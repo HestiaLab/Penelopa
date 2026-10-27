@@ -48,12 +48,25 @@
             <span>One .penelopa.json document</span>
         </div>
     </div>
+    @if (_dropMessage is not null)
+    {
+        <div class="penelopa-drop-rejection" role="alert">
+            <span>@_dropMessage</span>
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-label="Dismiss import message"
+                    @onclick="DismissDropMessage">&#215;</button>
+        </div>
+    }
 </section>
 
 @code {
     private IAtlasWorkspace? _workspace;
     private ElementReference _shell;
     private IJSObjectReference? _dropHandle;
+    private DotNetObjectReference<PenelopaWorkspace>? _dropRef;
+    private string? _dropMessage;
+    private bool _disposed;
 
     [Inject]
     private IAtlasWorkspaceFactory Factory { get; set; } = null!;
@@ -84,9 +97,11 @@
 
         try
         {
+            _dropRef = DotNetObjectReference.Create(this);
             _dropHandle = await JS.InvokeAsync<IJSObjectReference>(
                 "penelopa.attachFileDrop",
-                _shell);
+                _shell,
+                _dropRef);
         }
         catch (Exception ex) when (ex is JSException
             or JSDisconnectedException
@@ -94,11 +109,33 @@
         {
             // 拖放不可用时仍保留 Tools 面板的 Import file 按钮。
             Console.Error.WriteLine($"[Penelopa] PenelopaWorkspace file drop failed: {ex}");
+            _dropRef?.Dispose();
+            _dropRef = null;
         }
+    }
+
+    [JSInvokable]
+    public void OnFileDropRejected(string message)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _dropMessage = message;
+        StateHasChanged();
+    }
+
+    private void DismissDropMessage()
+    {
+        _dropMessage = null;
+        StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+
         if (_dropHandle is not null)
         {
             try
@@ -112,6 +149,9 @@
 
             _dropHandle = null;
         }
+
+        _dropRef?.Dispose();
+        _dropRef = null;
 
         if (_workspace is null)
         {

@@ -51,12 +51,18 @@
                 <p class="penelopa-canvas-empty-hint">
                     Or add a Circle, Rectangle, or Triangle from Tools.
                 </p>
-                @if (_sampleError is not null)
-                {
-                    <p class="penelopa-tool-message is-error" role="alert">@_sampleError</p>
-                }
             </div>
         </section>
+    }
+    @if (_sampleError is not null)
+    {
+        <div class="penelopa-canvas-notice is-error" role="alert">
+            <span>@_sampleError</span>
+            <button type="button"
+                    class="penelopa-tool-button"
+                    aria-label="Dismiss sample error"
+                    @onclick="DismissSampleMessage">&#215;</button>
+        </div>
     }
     @if (_sampleNotice is not null)
     {
@@ -65,7 +71,7 @@
             <button type="button"
                     class="penelopa-tool-button"
                     aria-label="Dismiss sample hint"
-                    @onclick="DismissSampleNotice">&#215;</button>
+                    @onclick="DismissSampleMessage">&#215;</button>
         </div>
     }
 </div>
@@ -82,6 +88,9 @@
     private IJSObjectReference? _dprWatchHandle;
     private bool _disposed;
     private bool _sampleBusy;
+    private bool _sampleInvalidated;
+    private bool _sampleApplying;
+    private CancellationTokenSource? _sampleCts;
     private string? _sampleError;
     private string? _sampleNotice;
 
@@ -111,6 +120,16 @@
     {
         _state = change.State;
         _sampleNotice = null;
+
+        // 只有用户对内容的修改会作废正在加载的样例；选区/临时值刷新不取消。
+        if (_sampleBusy
+            && !_sampleApplying
+            && (change.Kind & (DocumentChangeKind.Structure | DocumentChangeKind.Geometry)) != 0)
+        {
+            _sampleInvalidated = true;
+            _sampleCts?.Cancel();
+        }
+
         StateHasChanged();
         RequestRender();
     }
@@ -243,6 +262,9 @@
         RequestRender();
     }
 
+    private const string SampleCanceledMessage =
+        "Sample load canceled because the canvas changed.";
+
     private async Task LoadSampleAsync()
     {
         if (_sampleBusy)
@@ -250,37 +272,78 @@
             return;
         }
 
+        _sampleCts?.Cancel();
+        _sampleCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _sampleCts = cts;
+        _sampleInvalidated = false;
+        _sampleApplying = false;
         _sampleBusy = true;
         _sampleError = null;
+        _sampleNotice = null;
         StateHasChanged();
         try
         {
-            var result = await DocumentFiles.LoadSampleAsync();
+            var result = await DocumentFiles.LoadSampleAsync(cts.Token);
             if (_disposed)
             {
                 return;
             }
 
+            if (_sampleInvalidated
+                || cts.IsCancellationRequested
+                || PrimitiveService.GetAll().Count > 0)
+            {
+                _sampleError = null;
+                _sampleNotice = SampleCanceledMessage;
+                return;
+            }
+
             if (!result.Success || result.Document is null)
             {
+                _sampleNotice = null;
                 _sampleError = result.Error ?? "The sample scene could not be loaded.";
                 return;
             }
 
-            DocumentFiles.Apply(result.Document);
-            _sampleNotice = "Sample loaded. Select Simulate → Play.";
-            FitCanvas();
+            // Apply 自身会触发 Structure 变更；标记期间必须视为成功应用，而不是用户取消。
+            _sampleApplying = true;
+            try
+            {
+                DocumentFiles.Apply(result.Document);
+                _sampleNotice = "Sample loaded. Select Simulate → Play.";
+                FitCanvas();
+            }
+            finally
+            {
+                _sampleApplying = false;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (!_disposed)
+            {
+                _sampleError = null;
+                _sampleNotice = SampleCanceledMessage;
+            }
         }
         catch (Exception ex)
         {
             if (!_disposed)
             {
                 Console.Error.WriteLine($"[Penelopa] CanvasPanel sample load failed: {ex}");
+                _sampleNotice = null;
                 _sampleError = "The sample scene could not be loaded.";
             }
         }
         finally
         {
+            if (ReferenceEquals(_sampleCts, cts))
+            {
+                _sampleCts = null;
+            }
+
+            cts.Dispose();
             _sampleBusy = false;
             if (!_disposed)
             {
@@ -289,8 +352,9 @@
         }
     }
 
-    private void DismissSampleNotice()
+    private void DismissSampleMessage()
     {
+        _sampleError = null;
         _sampleNotice = null;
         StateHasChanged();
     }
@@ -355,6 +419,9 @@
     {
         _disposed = true;
         PrimitiveService.Changed -= HandleDocumentChanged;
+        _sampleCts?.Cancel();
+        _sampleCts?.Dispose();
+        _sampleCts = null;
         _renderer.Dispose();
         if (_dprWatchHandle is not null || _pointerHandle is not null)
         {

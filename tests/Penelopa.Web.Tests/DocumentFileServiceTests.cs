@@ -61,7 +61,7 @@ public class DocumentFileServiceTests
     }
 
     [Fact]
-    public async Task ReadAsync_VersionOneDocument_LoadsWithoutSimulation()
+    public async Task ReadAsync_VersionOneDocument_IsRejected()
     {
         const string json = @"{
           ""Version"": 1,
@@ -77,9 +77,125 @@ public class DocumentFileServiceTests
 
         var result = await _service.ReadAsync(BrowserFile("legacy.json", json));
 
+        Assert.False(result.Success);
+        Assert.Null(result.Document);
+        Assert.Contains("document version 1", result.Error);
+        Assert.Contains("no longer supported", result.Error);
+        Assert.Contains("Only version 2", result.Error);
+    }
+
+    [Fact]
+    public async Task ReadAsync_DocumentWithoutVersion_IsRejected()
+    {
+        const string json = @"{
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        var result = await _service.ReadAsync(BrowserFile("versionless.json", json));
+
+        Assert.False(result.Success);
+        Assert.Contains("no supported document version", result.Error);
+        Assert.Contains("Only version 2", result.Error);
+    }
+
+    [Fact]
+    public async Task ReadAsync_NewerDocumentVersion_IsRejected()
+    {
+        const string json = @"{
+          ""Version"": 3,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        var result = await _service.ReadAsync(BrowserFile("future.json", json));
+
+        Assert.False(result.Success);
+        Assert.Contains("version 3", result.Error);
+        Assert.Contains("newer than this app supports", result.Error);
+        Assert.Contains("Only version 2", result.Error);
+    }
+
+    [Fact]
+    public async Task ReadAsync_Utf8BomDocument_Loads()
+    {
+        var json = DocumentSerializer.Serialize(
+            new Primitive[] { new Rectangle { Name = { Value = "Bom" } } },
+            Array.Empty<Primitive>());
+        var bytes = Encoding.UTF8.GetPreamble()
+            .Concat(Encoding.UTF8.GetBytes(json))
+            .ToArray();
+
+        var result = await _service.ReadAsync(BrowserFile("bom.penelopa.json", bytes));
+
         Assert.True(result.Success);
-        Assert.Null(result.Document!.Simulation);
-        Assert.Equal("Legacy", Assert.Single(result.Document.Roots).Name.Value);
+        Assert.Equal("Bom", Assert.Single(result.Document!.Roots).Name.Value);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ReadAsync_Utf16Document_IsRejected(bool bigEndian)
+    {
+        var json = DocumentSerializer.Serialize(
+            new Primitive[] { new Rectangle() },
+            Array.Empty<Primitive>());
+        var encoding = bigEndian ? Encoding.BigEndianUnicode : Encoding.Unicode;
+        var bytes = encoding.GetPreamble()
+            .Concat(encoding.GetBytes(json))
+            .ToArray();
+
+        var result = await _service.ReadAsync(BrowserFile("utf16.penelopa.json", bytes));
+
+        Assert.False(result.Success);
+        Assert.Contains("must be UTF-8 encoded", result.Error);
+    }
+
+    [Fact]
+    public async Task ReadAsync_InvalidUtf8_IsRejected()
+    {
+        var prefix = Encoding.UTF8.GetBytes(
+            "{\"Version\":2,\"Primitives\":[{\"Id\":\"00000000-0000-0000-0000-000000000001\",\"Type\":\"Rectangle\",\"Props\":{\"Name\":\"");
+        var suffix = Encoding.UTF8.GetBytes("\"}}],\"SelectionIds\":[]}");
+        var bytes = prefix.Concat(new byte[] { 0xFF }).Concat(suffix).ToArray();
+
+        var result = await _service.ReadAsync(BrowserFile("invalid-utf8.penelopa.json", bytes));
+
+        Assert.False(result.Success);
+        Assert.Contains("must be UTF-8 encoded", result.Error);
+    }
+
+    [Fact]
+    public async Task ReadAsync_ExactlyFourMegabytes_Loads()
+    {
+        var json = DocumentSerializer.Serialize(
+            new Primitive[] { new Rectangle() },
+            Array.Empty<Primitive>());
+        var padded = json.PadRight(
+            DocumentSerializer.MaxDocumentBytes,
+            ' ');
+        var bytes = Encoding.UTF8.GetBytes(padded);
+        Assert.Equal(DocumentSerializer.MaxDocumentBytes, bytes.Length);
+
+        var result = await _service.ReadAsync(
+            BrowserFile("exact.penelopa.json", bytes, bytes.Length));
+
+        Assert.True(result.Success);
+        Assert.Single(result.Document!.Roots);
+    }
+
+    [Fact]
+    public async Task ReadAsync_EmptyFile_ReportsInvalidDocument()
+    {
+        var result = await _service.ReadAsync(
+            BrowserFile("empty.penelopa.json", Array.Empty<byte>()));
+
+        Assert.False(result.Success);
+        Assert.Contains("valid or supported", result.Error);
     }
 
     [Fact]
@@ -185,6 +301,12 @@ public class DocumentFileServiceTests
         string content,
         long? size = null)
         => new(name, Encoding.UTF8.GetBytes(content), size);
+
+    private static TestBrowserFile BrowserFile(
+        string name,
+        byte[] content,
+        long? size = null)
+        => new(name, content, size);
 
     private sealed class TestBrowserFile : IBrowserFile
     {

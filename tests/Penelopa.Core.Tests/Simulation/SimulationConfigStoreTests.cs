@@ -309,6 +309,34 @@ public class SimulationConfigStoreTests
     }
 
     [Fact]
+    public void UndoRedo_RestoresThreeTrackEditsInOrder()
+    {
+        var rectangle = AddRectangle();
+        var store = CreateStore();
+        Assert.True(store.TryAddTrack(rectangle.Id, "PosX", 0d, 10f, out var firstError), firstError);
+        Assert.True(store.TryAddTrack(rectangle.Id, "PosY", 0d, 20f, out var secondError), secondError);
+        Assert.True(store.TryAddTrack(rectangle.Id, "Width", 0d, 30f, out var thirdError), thirdError);
+        Assert.Equal(3, store.Config.Tracks.Count);
+
+        store.Undo();
+        Assert.Equal(new[] { "PosX", "PosY" }, TrackNames(store));
+        store.Undo();
+        Assert.Equal(new[] { "PosX" }, TrackNames(store));
+        store.Undo();
+        Assert.Empty(TrackNames(store));
+
+        store.Redo();
+        Assert.Equal(new[] { "PosX" }, TrackNames(store));
+        store.Redo();
+        Assert.Equal(new[] { "PosX", "PosY" }, TrackNames(store));
+        store.Redo();
+        Assert.Equal(new[] { "PosX", "PosY", "Width" }, TrackNames(store));
+    }
+
+    private static string[] TrackNames(SimulationConfigStore store)
+        => store.Config.Tracks.Select(track => track.PropertyName).ToArray();
+
+    [Fact]
     public void RemoveTrack_UndoAndRedoRestoreIt()
     {
         var rectangle = AddRectangle();

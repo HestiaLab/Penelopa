@@ -308,10 +308,11 @@ public class ToolPanelTests : TestContext
     }
 
     [Fact]
-    public void Load_VersionOneDocument_ClearsSimulationConfiguration()
+    public void Load_VersionOneDocument_IsRejectedAndKeepsCurrentState()
     {
-        var current = new Rectangle();
+        var current = new Rectangle { Name = { Value = "Current" } };
         _service.Add(current);
+        _service.SetSelected(current);
         var store = Services.GetRequiredService<SimulationConfigStore>();
         Assert.True(
             store.TryAddTrack(current.Id, "PosX", 0d, 10f, out var trackError),
@@ -334,13 +335,50 @@ public class ToolPanelTests : TestContext
         var cut = RenderComponent<ToolPanel>();
 
         FindButton(cut, "Load").Click();
-        cut.WaitForAssertion(() => Assert.Contains(
-            cut.FindAll("button"),
-            button => button.TextContent.Trim() == "Replace"));
-        FindButton(cut, "Replace").Click();
 
-        cut.WaitForAssertion(() => Assert.Empty(store.Config.Tracks));
-        Assert.Equal("Loaded", Assert.Single(_service.GetAll()).Name.Value);
+        cut.WaitForAssertion(() => Assert.Contains(
+            "document version 1, which is no longer supported",
+            cut.Markup));
+        Assert.DoesNotContain(
+            cut.FindAll("button"),
+            button => button.TextContent.Trim() == "Replace");
+        Assert.Same(current, Assert.Single(_service.GetAll()));
+        Assert.Same(current, Assert.Single(_service.GetSelection()));
+        Assert.Single(store.Config.Tracks);
+        Assert.True(_service.CanUndo);
+    }
+
+    [Fact]
+    public void Save_AfterVersionOneStorage_BacksUpLegacyPayloadAndWritesVersionTwo()
+    {
+        const string legacyJson = @"{
+          ""Version"": 1,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+          ],
+          ""SelectionIds"": []
+        }";
+        JSInterop.Setup<StorageReadResult>(
+                "penelopa.readStorage",
+                DocumentStorage.StorageKey)
+            .SetResult(new StorageReadResult(true, legacyJson, null));
+        _service.Add(new Circle());
+        var cut = RenderComponent<ToolPanel>();
+
+        FindButton(cut, "Save").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Document saved.", cut.Markup));
+        Assert.Contains(
+            JSInterop.Invocations,
+            invocation => invocation.Identifier == "penelopa.writeStorage"
+                && Equals(invocation.Arguments[0], DocumentStorage.BackupKey)
+                && Equals(invocation.Arguments[1], legacyJson));
+        var write = Assert.Single(
+            JSInterop.Invocations,
+            invocation => invocation.Identifier == "penelopa.writeStorage"
+                && Equals(invocation.Arguments[0], DocumentStorage.StorageKey));
+        using var document = JsonDocument.Parse((string)write.Arguments[1]!);
+        Assert.Equal(2, document.RootElement.GetProperty("Version").GetInt32());
     }
 
     [Fact]
@@ -642,6 +680,52 @@ public class ToolPanelTests : TestContext
     }
 
     [Fact]
+    public void Import_SecondImportReplacesTheRollbackSnapshot()
+    {
+        var original = new Circle { Name = { Value = "A" } };
+        _service.Add(original);
+        var cut = RenderComponent<ToolPanel>();
+
+        var second = new Rectangle { Name = { Value = "B" } };
+        var secondJson = DocumentSerializer.Serialize(
+            new Primitive[] { second },
+            Array.Empty<Primitive>());
+        cut.FindComponent<InputFile>()
+            .UploadFiles(InputFileContent.CreateFromText(secondJson, "b.penelopa.json"));
+        cut.WaitForAssertion(() => Assert.Contains(
+            cut.FindAll("button"),
+            button => button.TextContent.Trim() == "Replace document"));
+        FindButton(cut, "Replace document").Click();
+        cut.WaitForAssertion(() => Assert.Contains(
+            cut.FindAll("button"),
+            button => button.TextContent.Trim() == "Undo import"));
+
+        var third = new Triangle { Name = { Value = "C" } };
+        var thirdJson = DocumentSerializer.Serialize(
+            new Primitive[] { third },
+            Array.Empty<Primitive>());
+        cut.FindComponent<InputFile>()
+            .UploadFiles(InputFileContent.CreateFromText(thirdJson, "c.penelopa.json"));
+        cut.WaitForAssertion(() => Assert.Contains(
+            cut.FindAll("button"),
+            button => button.TextContent.Trim() == "Replace document"));
+        FindButton(cut, "Replace document").Click();
+        cut.WaitForAssertion(() => Assert.Contains(
+            cut.FindAll("button"),
+            button => button.TextContent.Trim() == "Undo import"));
+
+        FindButton(cut, "Undo import").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("B", Assert.Single(_service.GetAll()).Name.Value);
+            Assert.DoesNotContain(
+                cut.FindAll("button"),
+                button => button.TextContent.Trim() == "Undo import");
+        });
+    }
+
+    [Fact]
     public async Task Import_UndoBannerSurvivesSelectionAndTransientNotifications()
     {
         var imported = new Rectangle { Name = { Value = "Imported" } };
@@ -700,6 +784,13 @@ public class ToolPanelTests : TestContext
         Assert.DoesNotContain(
             cut.FindAll("button"),
             button => button.TextContent.Trim() == "Replace document");
+
+        cut.FindComponent<InputFile>().UploadFiles(
+            InputFileContent.CreateFromText(json, "one.penelopa.json"));
+
+        cut.WaitForAssertion(() => Assert.Contains(
+            cut.FindAll("button"),
+            button => button.TextContent.Trim() == "Replace document"));
     }
 
     [Fact]
@@ -888,11 +979,119 @@ public class ToolPanelTests : TestContext
     }
 
     [Fact]
-    public void Export_IsDisabledWithoutPrimitives()
+    public void Export_EmptyDocument_DownloadsEmptyVersionTwoFile()
+    {
+        var cut = RenderComponent<ToolPanel>();
+        var export = FindButton(cut, "Export file…");
+        Assert.False(export.HasAttribute("disabled"));
+
+        export.Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Document exported.", cut.Markup));
+        var invocation = Assert.Single(
+            JSInterop.Invocations,
+            candidate => candidate.Identifier == "penelopa.downloadTextFile");
+        var json = Assert.IsType<string>(invocation.Arguments[1]);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal(2, root.GetProperty("Version").GetInt32());
+        Assert.Empty(root.GetProperty("Primitives").EnumerateArray());
+        Assert.Empty(root.GetProperty("SelectionIds").EnumerateArray());
+        Assert.Empty(
+            root.GetProperty("Simulation").GetProperty("Tracks").EnumerateArray());
+        Assert.DoesNotContain(
+            JSInterop.Invocations,
+            candidate => candidate.Identifier == "penelopa.writeStorage");
+    }
+
+    [Fact]
+    public void Export_EmptyDocumentWithDormantTracks_RequiresConfirmation()
+    {
+        var removed = new Rectangle();
+        _service.Add(removed);
+        var store = Services.GetRequiredService<SimulationConfigStore>();
+        Assert.True(
+            store.TryAddTrack(removed.Id, "PosX", 0d, 10f, out var trackError),
+            trackError);
+        _service.Remove(removed);
+        var cut = RenderComponent<ToolPanel>();
+
+        FindButton(cut, "Export file…").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains(
+            cut.FindAll("button"),
+            button => button.TextContent.Trim() == "Export active only"));
+        Assert.DoesNotContain(
+            JSInterop.Invocations,
+            candidate => candidate.Identifier == "penelopa.downloadTextFile");
+
+        FindButton(cut, "Export active only").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var invocation = Assert.Single(
+                JSInterop.Invocations,
+                candidate => candidate.Identifier == "penelopa.downloadTextFile");
+            var json = Assert.IsType<string>(invocation.Arguments[1]);
+            using var document = JsonDocument.Parse(json);
+            Assert.Equal(2, document.RootElement.GetProperty("Version").GetInt32());
+            Assert.Empty(
+                document.RootElement.GetProperty("Primitives").EnumerateArray());
+            Assert.Empty(
+                document.RootElement.GetProperty("Simulation")
+                    .GetProperty("Tracks").EnumerateArray());
+        });
+        Assert.DoesNotContain(
+            JSInterop.Invocations,
+            candidate => candidate.Identifier == "penelopa.writeStorage");
+    }
+
+    [Fact]
+    public void Import_ConfirmationExposesLiveSummaryWithoutOverridingTheVisibleLabel()
+    {
+        var imported = new Rectangle { Name = { Value = "Imported" } };
+        var json = DocumentSerializer.Serialize(
+            new Primitive[] { imported },
+            Array.Empty<Primitive>());
+        var cut = RenderComponent<ToolPanel>();
+
+        var label = cut.Find("#penelopa-import-file-control");
+        Assert.Contains("Import file…", label.TextContent);
+        Assert.Equal("false", label.GetAttribute("aria-disabled"));
+        Assert.False(cut.Find("input[type=file]").HasAttribute("aria-label"));
+        Assert.Equal(
+            "penelopa-document-file-hint",
+            cut.Find("input[type=file]").GetAttribute("aria-describedby"));
+
+        cut.FindComponent<InputFile>()
+            .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
+
+        cut.WaitForAssertion(() =>
+        {
+            var summary = cut.Find(".penelopa-tool-confirm [role='status']");
+            Assert.Contains("penelopa-visually-hidden", summary.ClassName);
+            Assert.Equal("status", summary.GetAttribute("role"));
+            Assert.Contains("1 primitive(s)", summary.TextContent);
+            Assert.Contains("0 active track(s)", summary.TextContent);
+            Assert.Contains("0 warning(s)", summary.TextContent);
+            Assert.Contains("Confirm or cancel", summary.TextContent);
+        });
+    }
+
+    [Fact]
+    public void Import_ErrorMessage_UsesAlertRole()
     {
         var cut = RenderComponent<ToolPanel>();
 
-        Assert.True(FindButton(cut, "Export file…").HasAttribute("disabled"));
+        cut.FindComponent<InputFile>()
+            .UploadFiles(InputFileContent.CreateFromText("not json", "scene.penelopa.json"));
+
+        cut.WaitForAssertion(() =>
+        {
+            var message = cut.Find(".penelopa-tool-message.is-error");
+            Assert.Equal("alert", message.GetAttribute("role"));
+            Assert.Equal("assertive", message.GetAttribute("aria-live"));
+        });
     }
 
     private static AngleSharp.Dom.IElement FindButton(IRenderedFragment cut, string text)

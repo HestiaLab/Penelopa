@@ -73,7 +73,7 @@ public class DocumentSerializerSimulationTests
     }
 
     [Fact]
-    public void Deserialize_VersionOne_IgnoresSimulationSection()
+    public void Deserialize_VersionOne_IsRejected()
     {
         const string json = @"{
           ""Version"": 1,
@@ -84,11 +84,10 @@ public class DocumentSerializerSimulationTests
           ""SelectionIds"": []
         }";
 
-        var result = DocumentSerializer.Deserialize(json);
+        var result = DocumentSerializer.Deserialize(json, out var rejectedVersion);
 
-        Assert.NotNull(result);
-        Assert.Null(result!.Simulation);
-        Assert.Empty(result.Warnings);
+        Assert.Null(result);
+        Assert.Equal(1, rejectedVersion);
     }
 
     [Fact]
@@ -133,7 +132,33 @@ public class DocumentSerializerSimulationTests
         Assert.NotNull(result);
         Assert.Null(result!.Simulation);
         Assert.Single(result.Warnings);
-        Assert.Contains("Unknown interpolation", result.Warnings[0]);
+        Assert.Contains("unknown interpolation", result.Warnings[0]);
+    }
+
+    [Fact]
+    public void Deserialize_UnknownInterpolationWithHugeValue_TruncatesWarning()
+    {
+        var rectangle = CreateRectangle();
+        var config = Config(
+            false,
+            Track(rectangle, "PosX", Frame(0, 10), Frame(1, 100)));
+        var json = DocumentSerializer.Serialize(
+            new Primitive[] { rectangle },
+            Array.Empty<Primitive>(),
+            config);
+        var node = JsonNode.Parse(json)!;
+        var hugeInterpolation = new string('x', 1024 * 1024);
+        node["Simulation"]!["Tracks"]![0]!["Keyframes"]![0]!["Interpolation"] =
+            hugeInterpolation;
+
+        var result = DocumentSerializer.Deserialize(node.ToJsonString());
+
+        Assert.NotNull(result);
+        Assert.Single(result!.Roots);
+        Assert.Null(result.Simulation);
+        var warning = Assert.Single(result.Warnings);
+        Assert.True(warning.Length <= 240);
+        Assert.DoesNotContain(hugeInterpolation, warning);
     }
 
     [Fact]
