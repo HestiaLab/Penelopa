@@ -156,7 +156,7 @@
 ### 3.9 持久化与加载
 
 - **SIM-F-090** 文档 JSON 版本必须升级到 2，并新增可选 `simulation` 段，包含全局 Loop 设置和轨道数组（目标 `PrimitiveId`、Float 属性名、关键帧数组）。
-- **SIM-F-091** 必须能读取 v1 文档并将其视为无仿真配置；保存必须统一写 v2。版本高于当前支持上限时必须继续按现有规则拒绝。
+- **SIM-F-091** 必须拒绝 v1、缺失版本以及高于当前支持上限的版本；只有 v2 文档可被 Import、Load 或样例加载，保存必须统一写 v2。拒绝时必须在 Load/Import 上下文中给出明确原因，且不得删除或改写旧 localStorage。
 - **SIM-F-092** 仿真配置必须随现有 Save 写入 `penelopa.document`，并沿用 `penelopa.document.backup`；仿真页 Save 必须与编辑页 Save 使用相同的负载与备份策略，但仿真页仅在 Ready 可用。
 - **SIM-F-093** 仿真页 Save 仅允许在 Ready 使用；Preview、Playing、Paused、Finished 中必须禁用并提示先 Stop，防止把动画中间值写入文档。
 - **SIM-F-094** 加载文档必须整体替换当前文档与仿真配置；无 `simulation` 段时必须清空配置，并必须清空配置撤销栈。
@@ -237,6 +237,7 @@
 - 自动关键帧（auto-key）。
 - 图形化 cubic-bezier 曲线编辑器；v1 仅提供数值控制点。
 - 轨道超过 100 条同时播放的性能承诺。
+- 自动迁移 v1 文档或保留 v1 解析器；v1 数据必须在升级前用旧版本导出（ADR 0008）。
 
 ## 7. 默认值与限制
 
@@ -256,7 +257,7 @@
 | 配置撤销 | 50 步，进入页面/加载文档时清空 |
 | Save | 仅 Ready 可用；Dormant 轨道不写入 |
 | 时间轴 | 默认适配，支持缩放与横向滚动 |
-| 文档版本 | 2；v1 视为无仿真配置 |
+| 文档版本 | 仅 2；v1、缺失版本与未来版本拒绝 |
 | 主验收视口 | 1440×900、1024×768 |
 
 ## 8. 已确认的关键推导
@@ -280,7 +281,7 @@
 - 新的仿真页面、三栏布局、传输条、时间轴与检视器组件。
 - UI 无关的仿真模型、求值器与会话状态机（应保持在无 Blazor / SkiaSharp 依赖的层）。
 - 单例仿真配置服务，以及按 `Id` 关联、Dormant 生命周期与配置撤销栈。
-- `DocumentSerializer` 版本 2、可选 `simulation` 段、v1 兼容与加载容错。
+- `DocumentSerializer` 版本 2、可选 `simulation` 段、仅 v2 读取（v1/缺失/未来版本拒绝）与加载容错。
 - ToolPanel Save/Load 与仿真配置的联动。
 - 渲染器的只读 / 跳过命中缓冲的播放路径。
 - README、架构文档、ADR 与测试套件。
@@ -296,21 +297,21 @@
 - 布局：仿真页使用独立 Atlas 工作区（`SimulationWorkspaceDefinition`），默认左树 / 中画布 / 右检视器 / 底部通栏时间轴；必需区域不可关闭，可调整、折叠、移动与恢复；每次进入重建默认布局。
 - 共享：`DocumentStorage`（编辑页与仿真页）、`SimulationReadoutChannel`、只读渲染路径。
 
-**测试与门禁**（2026-10-26 文件 I/O、示例、拖放与导入撤销加入后重跑）
+**测试与门禁**（2026-10-27 v2-only、样例取消、拖放拒绝、导入可访问性与严格 UTF-8 加入后重跑）
 
-- .NET：394 Core + 47 Rendering + 83 UI = **524 项通过**。
-- JavaScript：**27 项通过**。
-- Playwright：**51 项通过、5 项跳过**（跳过项为性能用例；19 项编辑页回归 + 11 项仿真流程 + 10 项仿真评审回归 + 3 项仿真布局集成 + 8 项文档文件 I/O 与导入撤销）。
+- .NET：401 Core + 47 Rendering + 96 UI = **544 项通过**。
+- JavaScript：**34 项通过**。
+- Playwright：**62 项通过、5 项跳过**（跳过项为性能用例；19 文档文件/拖放/可访问性 + 19 编辑页回归 + 11 仿真流程 + 10 仿真评审回归 + 3 仿真布局集成）。
 - 性能：**5 项通过**（`PERF=1` 单独运行）。
-- 覆盖率：Core **93.51%**、Rendering **92.34%**；`Simulation/` 全部文件与 `DocumentSerializer` 均为文件级 ≥90%（Estimator 100%，DocumentSerializer 92.49%，SimulationConfigStore 92.73%）；`dotnet format --verify-no-changes` 通过。文件 I/O、示例、拖放与导入撤销的边界见 [ADR 0007](../adr/0007-document-file-import-export.md)。
-- E2E 覆盖建轨/改帧/播放、滑杆/加帧/撤销重做/步进、关键帧拖动、刻度点击与双击 Go to、Loop/Finished/Replay、隐藏标签页暂停、播放中/预览中离开恢复、浏览器后退恢复、进入页/返回焦点、Save 后重载复现、Dormant 保存确认/明细/逐条与全部清理、选择索引漂移、`null` 文档元素、保存失败安全摘要、1024×768 无横向溢出、默认四区域与无关闭入口、分割条键盘调整、折叠恢复、播放中布局调整、reduced-motion 提示与空状态；所有仿真用例统一断言 pageerror、console.error 与 Blazor 错误边界。
+- 覆盖率：Core **93.01%**、Rendering **91.96%**；`Simulation/` 全部文件与 `DocumentSerializer` 均为文件级 ≥90%（Estimator 100%，DocumentSerializer 91.95%，SimulationConfigStore 91.53%）；`dotnet format --verify-no-changes` 通过。仅 v2 的版本策略见 [ADR 0008](../adr/0008-v2-only-documents.md)。
+- E2E 覆盖建轨/改帧/播放、滑杆/加帧/撤销重做/步进、关键帧拖动、刻度点击与双击 Go to、Loop/Finished/Replay、隐藏标签页暂停、播放中/预览中离开恢复、浏览器后退恢复、进入页/返回焦点、Save 后重载复现、Dormant 保存确认/明细/逐条与全部清理、选择索引漂移、`null` 文档元素、保存失败安全摘要、1024×768 无横向溢出、默认四区域与无关闭入口、分割条键盘调整、折叠恢复、播放中布局调整、reduced-motion 提示与空状态；文档 I/O 还覆盖 v1/v2 localStorage、v1 文件拒绝、样例取消、拖放拒绝、同文件重选、导入确认焦点与空文档导出。所有仿真用例统一断言 pageerror、console.error 与 Blazor 错误边界。
 
 **性能实测**（参考 headless Chromium 1440×900，`PERF=1`）
 
-- 500 图元 + 100 条 Active 轨道：5 秒平均 **60.0 tick/s / 60.0 .NET frame/s / 60.0 paint/s**（301 ticks / 301 frames / 301 paints，5.02s）。
-- 选中 200 关键帧轨道播放：5 秒平均 **60.07 tick/s / 60.07 paint/s**（301 ticks / 301 paints，5.01s）。
-- Stop 后 Ready 空闲主线程 CPU：**2.43%**（低于 5% 门禁）。
-- 60 秒循环播放：JS heap 7,429,748 → 6,107,004 bytes（**无增长，约 -1.3 MiB**，低于收紧后的 8 MiB 阈值），DOM 节点 3230→2819，监听器 107→47。
+- 500 图元 + 100 条 Active 轨道：5 秒平均 **60.0 tick/s / 60.0 .NET frame/s / 59.8 paint/s**（302 ticks / 302 frames / 301 paints，5.03s）；Stop 后 Ready 空闲主线程 CPU **2.96%**（低于 5% 门禁）。
+- 选中 200 关键帧轨道播放：5 秒平均 **59.93 tick/s / 59.93 paint/s**（302 ticks / 302 paints，5.04s）。
+- 空编辑器空闲主线程 CPU **0.03%**；500 个矩形空闲主线程 CPU **0.02%**。
+- 60 秒循环播放：JS heap 6,242,784 → 6,180,064 bytes（**约 -0.1 MiB**，低于 8 MiB 阈值），DOM 节点 3277→2849，监听器 117→57。
 - 说明：tick 是 JS rAF 回调尝试数，.NET frame 是实际执行的 `OnSimulationFrame`，paint 是 SKGLView `OnPaintSurface` 回调；三者分别记录。播放期间启用 SKGLView render loop（停止后关闭），修复了按需 invalidate 与仿真 rAF 顺序导致的 30 paint/s 合并问题。CDP 的 `JSHeapUsedSize` 只覆盖 JS 堆，.NET WebAssembly 线性内存未单独暴露，运行时设计上不在帧循环中保留状态（readout 为瞬态快照，配置不可变）。
 
 ## 11. 变更记录
@@ -322,3 +323,4 @@
 | 2026-10-26 | 评审修复：Dormant 保存确认跨 Load、浏览器后退陈旧显示、`null` 文档元素、Dormant 明细/逐条删除；补回归测试并重跑门禁。 |
 | 2026-10-26 | 第二轮：Dormant 先剪除再校验 Active、强校验错误模型、固定等待替换、文件级覆盖率、真实 paint 指标与 render-loop 回退、P3 清理。 |
 | 2026-10-26 | 布局迁移到 Atlas 可停靠工作区：受保护区域、默认固定像素布局、折叠恢复、播放中布局调整与布局 E2E；新增 ADR 0006。 |
+| 2026-10-27 | 文档读取改为仅 v2（v1/缺失/未来版本拒绝，ADR 0008）；样例加载可取消；拖放 busy 拒绝；空文档导出；同文件重选；导入可访问性与严格 UTF-8；重跑门禁并更新计数。 |

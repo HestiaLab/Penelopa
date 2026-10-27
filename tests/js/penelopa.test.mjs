@@ -648,8 +648,13 @@ function createDropHarness() {
   const windowListeners = new Map();
   const classes = new Set();
   const changes = [];
+  const calls = [];
+  const timers = [];
   let inputAvailable = false;
   let toolsSelected = false;
+  let clickCount = 0;
+  let throwOnTransfer = false;
+  let activationMountsInput = true;
 
   const addListener = (map) => (type, handler) => {
     const handlers = map.get(type) ?? new Set();
@@ -660,8 +665,17 @@ function createDropHarness() {
     map.get(type)?.delete(handler);
   };
 
+  class TestHTMLInputElement {
+    constructor() {
+      this.disabled = false;
+      this.files = null;
+    }
+  }
   class TestDataTransfer {
     constructor() {
+      if (throwOnTransfer) {
+        throw new Error('transfer unavailable');
+      }
       this.files = [];
       this.items = { add: (file) => this.files.push(file) };
       this.types = ['Files'];
@@ -675,22 +689,22 @@ function createDropHarness() {
     }
   }
 
-  const input = {
-    disabled: false,
-    files: null,
-    dispatchEvent(event) {
-      changes.push(event);
-      return true;
-    },
+  const input = new TestHTMLInputElement();
+  input.dispatchEvent = (event) => {
+    changes.push(event);
+    return true;
   };
   const toolsTab = {
     textContent: 'Tools',
-    getAttribute(name) {
-      return name === 'aria-selected' ? (toolsSelected ? 'true' : 'false') : null;
+    hasAttribute(name) {
+      return name === 'aria-selected' ? toolsSelected : false;
     },
     click() {
+      clickCount++;
       toolsSelected = true;
-      inputAvailable = true;
+      if (activationMountsInput) {
+        inputAvailable = true;
+      }
     },
   };
   const root = {
@@ -714,26 +728,48 @@ function createDropHarness() {
     addEventListener: addListener(windowListeners),
     removeEventListener: removeListener(windowListeners),
   };
+  const document = {
+    querySelector: () => null,
+  };
   const context = vm.createContext({
     window,
-    document: {},
+    document,
+    HTMLInputElement: TestHTMLInputElement,
     DataTransfer: TestDataTransfer,
     Event: TestEvent,
-    setTimeout(callback) { callback(); },
+    setTimeout(callback) { timers.push(callback); },
     console,
   });
   vm.runInContext(source, context);
+
+  const dotNetRef = {
+    invokeMethodAsync(name, ...args) {
+      calls.push({ name, args });
+      return Promise.resolve();
+    },
+  };
 
   return {
     window,
     root,
     input,
     toolsTab,
+    dotNetRef,
     classes,
     changes,
+    calls,
     rootListeners,
     windowListeners,
     isToolsSelected: () => toolsSelected,
+    getClickCount: () => clickCount,
+    setInputAvailable(value) { inputAvailable = value; },
+    setThrowOnTransfer(value) { throwOnTransfer = value; },
+    setActivationMountsInput(value) { activationMountsInput = value; },
+    flushTimers() {
+      while (timers.length > 0) {
+        timers.shift()();
+      }
+    },
     dispatch(type, event) {
       for (const handler of rootListeners.get(type) ?? []) {
         handler(event);
@@ -742,28 +778,39 @@ function createDropHarness() {
   };
 }
 
-test('attachFileDrop activates Tools, assigns the dropped file, and cleans up', () => {
-  const harness = createDropHarness();
-  const file = { name: 'scene.penelopa.json', size: 12 };
+function fileDropEvent(file) {
   const dataTransfer = { types: ['Files'], files: [file], dropEffect: 'none' };
   let prevented = false;
   const event = {
     dataTransfer,
     preventDefault() { prevented = true; },
+    get defaultPrevented() { return prevented; },
   };
-  const handle = harness.window.penelopa.attachFileDrop(harness.root);
+  return event;
+}
+
+test('attachFileDrop activates Tools, assigns the dropped file, and cleans up', () => {
+  const harness = createDropHarness();
+  const file = { name: 'scene.penelopa.json', size: 12 };
+  const event = fileDropEvent(file);
+  const handle = harness.window.penelopa.attachFileDrop(
+    harness.root,
+    harness.dotNetRef);
 
   harness.dispatch('dragenter', event);
   assert.equal(harness.classes.has('penelopa-drop-active'), true);
 
   harness.dispatch('drop', event);
+  harness.flushTimers();
 
-  assert.equal(prevented, true);
+  assert.equal(event.defaultPrevented, true);
   assert.equal(harness.isToolsSelected(), true);
+  assert.equal(harness.getClickCount(), 1);
   assert.deepEqual(Array.from(harness.input.files), [file]);
   assert.equal(harness.changes.length, 1);
   assert.equal(harness.changes[0].type, 'change');
   assert.equal(harness.classes.has('penelopa-drop-active'), false);
+  assert.deepEqual(harness.calls, []);
 
   handle.dispose();
   assert.equal(harness.rootListeners.get('drop')?.size ?? 0, 0);
@@ -778,7 +825,7 @@ test('attachFileDrop ignores non-file drags', () => {
     dataTransfer,
     preventDefault() { throw new Error('non-file drag must not be prevented'); },
   };
-  harness.window.penelopa.attachFileDrop(harness.root);
+  harness.window.penelopa.attachFileDrop(harness.root, harness.dotNetRef);
 
   harness.dispatch('dragenter', event);
   harness.dispatch('drop', event);
@@ -786,4 +833,155 @@ test('attachFileDrop ignores non-file drags', () => {
   assert.equal(harness.classes.has('penelopa-drop-active'), false);
   assert.equal(harness.isToolsSelected(), false);
   assert.equal(harness.changes.length, 0);
+  assert.deepEqual(harness.calls, []);
+});
+
+test('attachFileDrop treats aria-selected attribute presence as selected', () => {
+  const harness = createDropHarness();
+  harness.setInputAvailable(false);
+  harness.toolsTab.hasAttribute = (name) =>
+    name === 'aria-selected' ? true : false;
+  const handle = harness.window.penelopa.attachFileDrop(
+    harness.root,
+    harness.dotNetRef);
+
+  harness.dispatch('drop', fileDropEvent({ name: 'scene.json', size: 1 }));
+  harness.flushTimers();
+
+  assert.equal(harness.getClickCount(), 0);
+  assert.deepEqual(harness.calls, [{
+    name: 'OnFileDropRejected',
+    args: ['The import control is not available. Open Tools and try again.'],
+  }]);
+
+  handle.dispose();
+});
+
+test('attachFileDrop rejects a drop while the import input is disabled', () => {
+  const harness = createDropHarness();
+  harness.setInputAvailable(true);
+  harness.input.disabled = true;
+  const handle = harness.window.penelopa.attachFileDrop(
+    harness.root,
+    harness.dotNetRef);
+
+  harness.dispatch('drop', fileDropEvent({ name: 'scene.json', size: 1 }));
+
+  assert.equal(harness.getClickCount(), 0);
+  assert.equal(harness.changes.length, 0);
+  assert.equal(harness.classes.has('penelopa-drop-active'), false);
+  assert.deepEqual(harness.calls, [{
+    name: 'OnFileDropRejected',
+    args: ['A document operation is in progress. The dropped file was not imported.'],
+  }]);
+
+  harness.flushTimers();
+  assert.equal(harness.calls.length, 1);
+  handle.dispose();
+});
+
+test('attachFileDrop rejects once when the import input never appears', () => {
+  const harness = createDropHarness();
+  harness.setActivationMountsInput(false);
+  const handle = harness.window.penelopa.attachFileDrop(
+    harness.root,
+    harness.dotNetRef);
+
+  harness.dispatch('drop', fileDropEvent({ name: 'scene.json', size: 1 }));
+  harness.flushTimers();
+
+  assert.deepEqual(harness.calls, [{
+    name: 'OnFileDropRejected',
+    args: ['The import control is not available. Open Tools and try again.'],
+  }]);
+  assert.equal(harness.changes.length, 0);
+
+  handle.dispose();
+});
+
+test('attachFileDrop rejects when the DataTransfer cannot be built', () => {
+  const harness = createDropHarness();
+  harness.setInputAvailable(true);
+  harness.setThrowOnTransfer(true);
+  const handle = harness.window.penelopa.attachFileDrop(
+    harness.root,
+    harness.dotNetRef);
+
+  harness.dispatch('drop', fileDropEvent({ name: 'scene.json', size: 1 }));
+  harness.flushTimers();
+
+  assert.deepEqual(harness.calls, [{
+    name: 'OnFileDropRejected',
+    args: ['The dropped file could not be attached to the import control.'],
+  }]);
+  assert.equal(harness.changes.length, 0);
+
+  handle.dispose();
+});
+
+test('attachFileDrop does not call back after dispose', () => {
+  const harness = createDropHarness();
+  harness.setInputAvailable(true);
+  const handle = harness.window.penelopa.attachFileDrop(
+    harness.root,
+    harness.dotNetRef);
+
+  harness.dispatch('drop', fileDropEvent({ name: 'scene.json', size: 1 }));
+  handle.dispose();
+  harness.flushTimers();
+
+  assert.deepEqual(harness.calls, []);
+  assert.equal(harness.changes.length, 0);
+});
+
+test('attachFileDrop keeps an already selected Tools tab and imports once', () => {
+  const harness = createDropHarness();
+  harness.setInputAvailable(true);
+  harness.toolsTab.hasAttribute = (name) =>
+    name === 'aria-selected' ? true : false;
+  const file = { name: 'scene.penelopa.json', size: 12 };
+  const handle = harness.window.penelopa.attachFileDrop(
+    harness.root,
+    harness.dotNetRef);
+
+  harness.dispatch('drop', fileDropEvent(file));
+  harness.flushTimers();
+
+  assert.equal(harness.getClickCount(), 0);
+  assert.equal(harness.changes.length, 1);
+  assert.deepEqual(Array.from(harness.input.files), [file]);
+
+  handle.dispose();
+});
+
+test('resetFileInput clears the hidden import input', () => {
+  class TestInput {
+    constructor() {
+      this.value = 'C:\\fakepath\\scene.penelopa.json';
+    }
+  }
+  const input = new TestInput();
+  let selector = null;
+  const window = {
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const document = {
+    querySelector(value) {
+      selector = value;
+      return input;
+    },
+  };
+  const context = vm.createContext({
+    window,
+    document,
+    HTMLInputElement: TestInput,
+    console,
+  });
+  vm.runInContext(source, context);
+
+  window.penelopa.resetFileInput('#penelopa-import-file-control');
+
+  assert.equal(selector, '#penelopa-import-file-control input[type="file"]');
+  assert.equal(input.value, '');
 });

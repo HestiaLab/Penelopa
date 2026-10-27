@@ -8,13 +8,16 @@ namespace Penelopa.Core.Services;
 
 /// <summary>
 /// 图元树的 JSON 序列化/反序列化。选区以图元 Id 存储，加载后可重新解析。
-/// 容器子元素嵌套在父节点内。加载时校验版本、Id 唯一性、节点数/深度/字节数，
-/// 防止手工编辑、旧版本或被污染的 localStorage 破坏页面。
+/// 容器子元素嵌套在父节点内。所有读取只接受当前（v2）文档；加载时还校验
+/// Id 唯一性、节点数/深度/字节数，防止手工编辑或被污染的 localStorage 破坏页面。
 /// </summary>
 public static class DocumentSerializer
 {
-    /// <summary>当前文档格式版本。缺失版本视为旧版（版本 0），v1 只含图元，v2 增加可选仿真段。</summary>
+    /// <summary>当前文档格式版本；读取与写入都只使用此版本。</summary>
     public const int CurrentVersion = 2;
+
+    /// <summary>单条加载警告的最大长度，避免把文件可控字符串整段回显给用户。</summary>
+    private const int MaxWarningLength = 240;
 
     /// <summary>单文档最大图元数。</summary>
     public const int MaxNodes = 10_000;
@@ -103,11 +106,20 @@ public static class DocumentSerializer
     }
 
     /// <summary>
-    /// 反序列化文档。JSON 无效、版本未知、Id 重复/为空、超过节点/深度/字节上限时返回 null。
-    /// 调用方根据重建的树重新解析选区 Id。
+    /// 反序列化 v2 文档。JSON 无效、版本不是 2、Id 重复/为空、超过节点/深度/字节上限时
+    /// 返回 null。调用方根据重建的树重新解析选区 Id。
     /// </summary>
     public static DeserializeResult? Deserialize(string json)
+        => Deserialize(json, out _);
+
+    /// <summary>
+    /// 反序列化 v2 文档，并在仅因版本不受支持而拒绝时通过
+    /// <paramref name="rejectedVersion"/> 报告文件中的版本号
+    /// （缺失版本为 0）；JSON/结构错误时为 null。
+    /// </summary>
+    public static DeserializeResult? Deserialize(string json, out int? rejectedVersion)
     {
+        rejectedVersion = null;
         if (string.IsNullOrWhiteSpace(json) || Encoding.UTF8.GetByteCount(json) > MaxDocumentBytes)
         {
             return null;
@@ -116,7 +128,18 @@ public static class DocumentSerializer
         try
         {
             var dto = JsonSerializer.Deserialize<DocumentDto>(json, Options);
-            if (dto?.Primitives is null || dto.Version < 0 || dto.Version > CurrentVersion)
+            if (dto is null)
+            {
+                return null;
+            }
+
+            if (dto.Version != CurrentVersion)
+            {
+                rejectedVersion = dto.Version;
+                return null;
+            }
+
+            if (dto.Primitives is null)
             {
                 return null;
             }
@@ -231,8 +254,7 @@ public static class DocumentSerializer
         IReadOnlyList<Primitive> roots,
         List<string> warnings)
     {
-        if (dto.Version < 2
-            || dto.Simulation is not { } element
+        if (dto.Simulation is not { } element
             || element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
             return null;
@@ -247,13 +269,13 @@ public static class DocumentSerializer
         }
         catch (JsonException)
         {
-            warnings.Add("The saved simulation configuration was ignored because it is invalid.");
+            AddWarning(warnings, "The saved simulation configuration was ignored because it is invalid.");
             return null;
         }
 
         if (simulationDto is null)
         {
-            warnings.Add("The saved simulation configuration was ignored because it is invalid.");
+            AddWarning(warnings, "The saved simulation configuration was ignored because it is invalid.");
             return null;
         }
 
@@ -262,7 +284,8 @@ public static class DocumentSerializer
             var trackDtos = simulationDto.Tracks ?? new List<SimulationTrackDto>();
             if (trackDtos.Count > SimulationLimits.MaxTracks)
             {
-                warnings.Add(
+                AddWarning(
+                    warnings,
                     $"The saved simulation configuration was ignored: A simulation can contain at most {SimulationLimits.MaxTracks} tracks.");
                 return null;
             }
@@ -272,7 +295,8 @@ public static class DocumentSerializer
             {
                 if (trackDto is null)
                 {
-                    warnings.Add(
+                    AddWarning(
+                        warnings,
                         "The saved simulation configuration was ignored: A simulation track is null.");
                     return null;
                 }
@@ -282,7 +306,8 @@ public static class DocumentSerializer
 
             if (rawKeyframeCount > SimulationLimits.MaxKeyframesTotal)
             {
-                warnings.Add(
+                AddWarning(
+                    warnings,
                     $"The saved simulation configuration was ignored: A simulation can contain at most {SimulationLimits.MaxKeyframesTotal} keyframes.");
                 return null;
             }
@@ -295,7 +320,8 @@ public static class DocumentSerializer
             {
                 if (string.IsNullOrWhiteSpace(trackDto.Property))
                 {
-                    warnings.Add(
+                    AddWarning(
+                        warnings,
                         "The saved simulation configuration was ignored: A simulation track is missing a property name.");
                     return null;
                 }
@@ -317,7 +343,8 @@ public static class DocumentSerializer
             var structureIssues = SimulationValidator.ValidateStructure(config);
             if (structureIssues.Count > 0)
             {
-                warnings.Add(
+                AddWarning(
+                    warnings,
                     $"The saved simulation configuration was ignored: {structureIssues[0].Message}");
                 return null;
             }
@@ -326,14 +353,16 @@ public static class DocumentSerializer
             var valueIssues = SimulationValidator.ValidateValues(resolution.Active);
             if (valueIssues.Count > 0)
             {
-                warnings.Add(
+                AddWarning(
+                    warnings,
                     $"The saved simulation configuration was ignored: {valueIssues[0].Message}");
                 return null;
             }
 
             if (dormantCount > 0)
             {
-                warnings.Add(
+                AddWarning(
+                    warnings,
                     $"Removed {dormantCount} simulation track(s) whose primitives or properties no longer exist.");
             }
 
@@ -341,9 +370,19 @@ public static class DocumentSerializer
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or InvalidOperationException or OverflowException)
         {
-            warnings.Add($"The saved simulation configuration was ignored: {ex.Message}");
+            AddWarning(
+                warnings,
+                $"The saved simulation configuration was ignored: {ex.Message}");
             return null;
         }
+    }
+
+    private static void AddWarning(List<string> warnings, string message)
+    {
+        warnings.Add(
+            message.Length <= MaxWarningLength
+                ? message
+                : message[..MaxWarningLength]);
     }
 
     private static SimulationTrack FromDto(SimulationTrackDto trackDto)
@@ -439,7 +478,8 @@ public static class DocumentSerializer
             return InterpolationKind.CubicBezier;
         }
 
-        throw new FormatException($"Unknown interpolation kind '{interpolation}'.");
+        throw new FormatException(
+            "A simulation keyframe uses an unknown interpolation kind.");
     }
 
     private static Primitive FromDto(PrimitiveDto? dto, ParseContext context, int depth)
@@ -561,7 +601,7 @@ public sealed class DeserializeResult
 
     public IReadOnlyList<Guid> SelectionIds { get; }
 
-    /// <summary>保存的仿真配置；v1 文档或无 simulation 段时为 null。</summary>
+    /// <summary>保存的仿真配置；无 simulation 段时为 null。</summary>
     public SimulationConfig? Simulation { get; }
 
     /// <summary>加载仿真段时产生的警告（非法段被丢弃、悬空轨道被剪除等）。</summary>

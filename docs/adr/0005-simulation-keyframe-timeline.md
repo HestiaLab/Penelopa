@@ -1,8 +1,12 @@
 # ADR 0005 — Simulation keyframe timeline and preview isolation
 
-- Status: Accepted — implemented
+- Status: Accepted — implemented; document-version policy updated by [ADR 0008](0008-v2-only-documents.md)
 - Date: 2026-10-25 (accepted); 2026-10-26 (implemented)
 - Requirements: [Simulation animation v1](../requirements/simulation.md)
+
+> The version-1 compatibility described in this ADR's Context/Consequences is
+> superseded: current reads accept only version 2 documents. See
+> [ADR 0008](0008-v2-only-documents.md).
 
 ## Context
 
@@ -136,9 +140,11 @@ this ADR records the model chosen for v1.
 
 ## Consequences
 
-- The document format moves to version 2. Version 1 documents remain readable;
-  older builds that only understand version 1 will reject version 2, which is
-  the existing forward-version policy.
+- The document format moves to version 2. Only version 2 documents are read;
+  version 1 documents must be exported with an older release before upgrading
+  (see [ADR 0008](0008-v2-only-documents.md)). Older builds that only
+  understand version 1 still reject version 2, which is the existing
+  forward-version policy.
 - A new UI-independent simulation model/evaluator, a configuration service, a
   simulation page, a render-only path and serializer changes are required.
   The editor top toolbar stops being purely static, so the README,

@@ -8,6 +8,14 @@ Penelopa hosts a SkiaSharp drawing canvas, a primitive tree, alignment actions, 
 
 > **Live demo:** https://HestiaLab.github.io/Penelopa/
 
+> **v2-only documents (breaking change):** Penelopa now reads only version 2
+> documents, from files and from localStorage. Version 1 and versionless
+> documents are rejected by Load and Import with a migration hint. Export v1
+> data with an older release **before** upgrading. A rejected v1 localStorage
+> entry is left untouched; the first Save copies the old payload to
+> `penelopa.document.backup` (one slot, later saves may overwrite it) and writes
+> v2 to `penelopa.document`. See [ADR 0008](docs/adr/0008-v2-only-documents.md).
+
 ## Preview
 
 ![Penelopa editor with the Loop Study 01 sample loaded](docs/screenshot.png)
@@ -24,7 +32,7 @@ Six-region dockable workspace: SkiaSharp drawing canvas, primitive tree, alignme
 2. In the empty editor, choose **Load Loop Study 01**.
 3. Select **Simulate**, then **Play**.
 
-The sample is a normal v2 document. The editor's **Import file…** / **Export file…** actions read and write the same `.penelopa.json` format without touching localStorage; you can also drag a `.penelopa.json` file anywhere over the editor. An import can be undone once until you edit, save, import again, or reload.
+The sample is a normal v2 document. The editor's **Import file…** / **Export file…** actions read and write the same `.penelopa.json` format without touching localStorage; you can also drag a `.penelopa.json` file anywhere over the editor. An import can be undone once until you edit, save, load, or import again.
 
 ## Features
 
@@ -61,16 +69,23 @@ The sample is a normal v2 document. The editor's **Import file…** / **Export f
   format persists the active animation configuration
 - Editor document I/O: import/export `.penelopa.json` v2 files; import parses
   and shows primitive/track counts and warnings before replacing, and never
-  writes localStorage. Export uses the Save payload and warns when dormant
-  tracks are excluded
+  writes localStorage. Import is strict UTF-8 (a BOM is accepted; UTF-16 and
+  invalid byte sequences are rejected), warnings are length-capped, and Export
+  uses the Save payload, warns when dormant tracks are excluded, and still works
+  on an empty document
 - One-level `Undo import` restores the previous document, selection, both
   undo/redo stacks and the simulation Loop; it is discarded by a persistent
   edit, configuration change, successful save, another import/Load, or reload
 - Drag a `.penelopa.json` file anywhere over the editor to import it; the
   workspace shows a drop overlay and, if needed, activates Tools so the same
-  confirmation is visible. The Import button remains the keyboard path
+  confirmation is visible. A drop while another document operation is running
+  is rejected with a workspace alert instead of being queued. The Import button
+  remains the keyboard path, and the hidden file input is reset after each read
+  so the same file can be selected again
 - The empty editor offers a bundled **Loop Study 01** v2 sample; it loads into
-  the editor, selects `Step Indicator`, and never autoplays
+  the editor, selects `Step Indicator`, and never autoplays. If the canvas
+  changes (add, Import, or Load) while the sample request is in flight, the
+  sample is canceled and a visible notice explains why
 - The read-only simulation canvas hides the editor's coordinate axes for a
   clean presentation
 - Property labels, inline errors, tree selection state and a polite live
@@ -189,6 +204,7 @@ python3 scripts/check-coverage.py
 | [ADR 0005](docs/adr/0005-simulation-keyframe-timeline.md) | Simulation keyframe timeline, preview isolation and persistence      |
 | [ADR 0006](docs/adr/0006-simulation-atlas-workspace.md)  | Simulation Atlas workspace, protected regions and layout reset       |
 | [ADR 0007](docs/adr/0007-document-file-import-export.md) | v2 JSON file import/export, bundled sample, and import rollback       |
+| [ADR 0008](docs/adr/0008-v2-only-documents.md)           | v2-only reads, the v1 breaking change and legacy backup behavior     |
 
 The GitHub Pages workflow is manual (`workflow_dispatch`); publishing is an
 explicit release action.

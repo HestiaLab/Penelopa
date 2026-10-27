@@ -292,8 +292,10 @@ invalid.
 stored by type with their property values (color keys excluded — they are
 rebuilt on load), containers nest their children, and the selection is
 saved as primitive ids so it re-resolves against the rebuilt tree.
-Documents carry `Version` 2; versionless/v1 documents are accepted with no
-simulation configuration, and future/negative versions are rejected. The
+Documents carry `Version` 2; only version 2 documents are accepted.
+Versionless, v1, negative and future versions are rejected, and the Import/Load
+boundaries report the rejected version with a context-specific error (ADR 0008).
+The
 optional `simulation` section stores the loop flag and tracks (primitive id,
 Float property name, ordered keyframes with time/value/interpolation). Loading
 validates geometry strictly and validates the simulation section separately:

@@ -1,8 +1,12 @@
 # ADR 0007 — Document file import/export and the bundled sample
 
-- Status: Accepted — implemented
+- Status: Accepted — implemented; document-version policy updated by [ADR 0008](0008-v2-only-documents.md)
 - Date: 2026-10-26
 - Related: [Document format v2](../requirements/simulation.md), [ADR 0005](0005-simulation-keyframe-timeline.md)
+
+> The v1-readable statements in this ADR are superseded: Import, Load, and the
+> sample accept only version 2 documents. See
+> [ADR 0008](0008-v2-only-documents.md).
 
 ## Context
 
@@ -18,19 +22,20 @@ and a new XXE surface without a current XML producer.
 
 ## Decision
 
-1. **JSON v2 is the only file format.** Import accepts the same JSON produced
-   by `DocumentSerializer`, with a `.json` or `.penelopa.json` extension.
-   Export always writes the current v2 format. There is no XML/XSD adapter in
-   this implementation.
+1. **JSON v2 is the only file format.** Import accepts only the JSON produced
+   by `DocumentSerializer` for version 2, with a `.json` or `.penelopa.json`
+   extension. Versionless, v1, negative, and future versions are rejected with
+   an explicit version error (ADR 0008). Export always writes the current v2
+   format. There is no XML/XSD adapter in this implementation.
 2. **File I/O lives in the editor's Document section.** `Save`/`Load` keep
    their existing localStorage meaning. `Import file…` and `Export file…`
    operate on files only; neither writes localStorage.
 3. **Import replaces, after parsing and confirmation.** A single file is read
-   (4MB limit, UTF-8), parsed with the existing v2 validator, and summarized
-   with primitive/track counts and warnings. The user confirms before the
-   document, selection and simulation configuration are replaced. Invalid
-   files leave all current state untouched. A pending confirmation is canceled
-   if the document or simulation configuration changes.
+   (4MB limit, strict UTF-8 with an optional BOM), parsed with the existing v2
+   validator, and summarized with primitive/track counts and warnings. The user
+   confirms before the document, selection and simulation configuration are
+   replaced. Invalid files leave all current state untouched. A pending
+   confirmation is canceled if the document or simulation configuration changes.
 4. **Export uses the Save payload.** It serializes the current in-memory
    document, selection, global loop and active tracks. Dormant tracks are
    excluded with the same warning used by Save. The browser downloads a Blob;
@@ -46,8 +51,12 @@ and a new XXE surface without a current XML producer.
    anywhere over the editor displays a drop overlay and is forwarded to the
    existing hidden `InputFile`; if necessary the editor activates the Tools
    tab first. Non-file drags are ignored, multiple files use the existing
-   single-file rejection, and no URL or directory drop is supported. The
-   visible `Import file…` control remains the keyboard/accessibility path.
+   single-file rejection, and no URL or directory drop is supported. A drop
+   while another document operation is running, or while the import control is
+   unavailable, is rejected with a workspace-level alert instead of being
+   queued. The visible `Import file…` control remains the keyboard/accessibility
+   path, and its hidden input is reset after each read so the same file can be
+   selected again.
 8. **One-level import rollback.** A successful import captures the previous
    document, selection, simulation configuration, Loop and both undo/redo
    stacks. `Undo import` restores all of them without creating a document or
@@ -63,7 +72,10 @@ and a new XXE surface without a current XML producer.
 
 ## Consequences
 
-- No document format change; v1 files remain readable and v2 is written.
+- Documents are v2-only: v1 and versionless files are rejected with an
+  explicit error, and Save/Export always write v2. Users with v1 data must
+  export it with an older release before upgrading; the first save keeps the
+  old localStorage payload in `penelopa.document.backup` (one slot).
 - File failures are all-or-nothing at the parse boundary; a successful import
   still clears the current history stacks, and `Undo import` restores the
   captured ones.

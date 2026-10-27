@@ -120,6 +120,7 @@ public class PropertyValidationTests
     public void LoadDocument_WithEmptyName_IsRejected()
     {
         const string json = @"{
+          ""Version"": 2,
           ""Primitives"": [
             {
               ""Id"": ""11111111-1111-1111-1111-111111111111"",
@@ -168,6 +169,7 @@ public class PropertyValidationTests
     public void LoadDocument_WithNegativeRadius_IsRejected()
     {
         const string json = @"{
+          ""Version"": 2,
           ""Primitives"": [
             {
               ""Id"": ""11111111-1111-1111-1111-111111111111"",
@@ -191,6 +193,7 @@ public class PropertyValidationTests
     public void LoadDocument_WithZeroWidth_IsRejected()
     {
         const string json = @"{
+          ""Version"": 2,
           ""Primitives"": [
             {
               ""Id"": ""11111111-1111-1111-1111-111111111111"",
@@ -215,6 +218,7 @@ public class PropertyValidationTests
     public void LoadDocument_WithValidValues_IsAccepted()
     {
         const string json = @"{
+          ""Version"": 2,
           ""Primitives"": [
             {
               ""Id"": ""11111111-1111-1111-1111-111111111111"",

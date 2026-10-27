@@ -51,7 +51,7 @@ test.describe('performance', () => {
         },
       }));
       localStorage.setItem('penelopa.document', JSON.stringify({
-        Version: 1,
+        Version: 2,
         Primitives: primitives,
         SelectionIds: [],
       }));

@@ -1,6 +1,7 @@
 @namespace Penelopa.Web.Components
 @using Atlas.Blazor.Content
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
 @using Microsoft.JSInterop
 @using Penelopa.Core.Alignment
 @using Penelopa.Core.Primitives
@@ -43,17 +44,18 @@
                     class="penelopa-tool-button"
                     disabled="@(_isSaving || _isLoading || _isImporting || _isExporting)"
                     @onclick="LoadDocument">Load</button>
-            <label class="penelopa-tool-button penelopa-file-button">
+            <label id="penelopa-import-file-control"
+                   class="penelopa-tool-button penelopa-file-button @(ImportDisabled ? "is-disabled" : string.Empty)"
+                   aria-disabled="@(ImportDisabled ? "true" : "false")">
                 @(_isImporting ? "Importing…" : "Import file…")
                 <InputFile accept=".json,application/json"
-                           disabled="@(_isSaving || _isLoading || _isImporting || _isExporting)"
+                           disabled="@ImportDisabled"
                            OnChange="OnImportFileSelected"
-                           aria-label="Import document file"
                            aria-describedby="penelopa-document-file-hint" />
             </label>
             <button type="button"
                     class="penelopa-tool-button"
-                    disabled="@(!_hasPrimitives || _isSaving || _isLoading || _isImporting || _isExporting)"
+                    disabled="@(_isSaving || _isLoading || _isImporting || _isExporting)"
                     @onclick="ExportDocumentAsync">@(_isExporting ? "Exporting…" : "Export file…")</button>
         </div>
         <p class="penelopa-tool-hint" id="penelopa-document-file-hint">
@@ -65,10 +67,13 @@
                 <p class="penelopa-tool-hint">
                     Replace the current document and simulation configuration with
                     <strong>@_pendingImport.FileName</strong>? You can undo this import
-                    until you edit the document or animation, or save.
+                    until you edit, save, load, or import again.
                 </p>
                 <p class="penelopa-tool-hint">
                     @PendingImportPrimitiveCount primitive(s), @PendingImportTrackCount active track(s).
+                </p>
+                <p class="penelopa-visually-hidden" role="status">
+                    @PendingImportPrimitiveCount primitive(s), @PendingImportTrackCount active track(s), @PendingImportWarningCount warning(s). Confirm or cancel.
                 </p>
                 @if (_pendingImport.Document.Warnings.Count > 0)
                 {
@@ -80,7 +85,10 @@
                     </ul>
                 }
                 <div class="penelopa-tool-actions">
-                    <button type="button" class="penelopa-tool-button" @onclick="ConfirmImport">Replace document</button>
+                    <button type="button"
+                            class="penelopa-tool-button"
+                            @ref="_replaceDocumentButton"
+                            @onclick="ConfirmImport">Replace document</button>
                     <button type="button" class="penelopa-tool-button" @onclick="CancelImport">Cancel import</button>
                 </div>
             </div>
@@ -155,8 +163,10 @@
         @if (_documentMessage is not null)
         {
             <p class="penelopa-tool-message @GetMessageClass()"
-               role="status"
-               aria-live="polite">@_documentMessage</p>
+               role="@(_documentError ? "alert" : "status")"
+               aria-live="@(_documentError ? "assertive" : "polite")"
+               tabindex="-1"
+               @ref="_documentMessageElement">@_documentMessage</p>
         }
     </div>
 
@@ -223,10 +233,17 @@
     private bool _documentError;
     private bool _documentWarning;
     private bool _hasSelection;
-    private bool _hasPrimitives;
     private bool _canGroup;
     private bool _canUngroup;
     private string? _groupMessage;
+    private bool _disposed;
+    private bool _focusImportConfirmation;
+    private bool _focusDocumentMessage;
+    private ElementReference _replaceDocumentButton;
+    private ElementReference _documentMessageElement;
+
+    private bool ImportDisabled
+        => _isSaving || _isLoading || _isImporting || _isExporting;
 
     private int PendingImportPrimitiveCount
         => _pendingImport?.Document is { } document
@@ -235,6 +252,9 @@
 
     private int PendingImportTrackCount
         => _pendingImport?.Document?.Simulation?.Tracks.Count ?? 0;
+
+    private int PendingImportWarningCount
+        => _pendingImport?.Document?.Warnings.Count ?? 0;
 
     private bool CanUndoImport
         => ImportRollback.CanUndo
@@ -278,6 +298,41 @@
         PrimitiveService.Changed += HandleDocumentChanged;
         SimulationConfigStore.Changed += HandleSimulationConfigChanged;
         ImportRollback.Changed += HandleImportRollbackChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusImportConfirmation)
+        {
+            _focusImportConfirmation = false;
+            await FocusAsync(
+                _replaceDocumentButton,
+                "import confirmation");
+        }
+
+        if (_focusDocumentMessage)
+        {
+            _focusDocumentMessage = false;
+            await FocusAsync(
+                _documentMessageElement,
+                "document message");
+        }
+    }
+
+    private static async Task FocusAsync(ElementReference element, string target)
+    {
+        try
+        {
+            await element.FocusAsync();
+        }
+        catch (Exception ex) when (ex is JSException
+            or JSDisconnectedException
+            or InvalidOperationException)
+        {
+            // 焦点是增强；JS 不可达时保留消息与键盘顺序。
+            Console.Error.WriteLine(
+                $"[Penelopa] ToolPanel {target} focus failed: {ex}");
+        }
     }
 
     private void HandleDocumentChanged(DocumentChange change)
@@ -337,7 +392,6 @@
     private void UpdateSelectionState(IReadOnlyList<Primitive> selection)
     {
         _hasSelection = selection.Count > 0;
-        _hasPrimitives = PrimitiveService.GetAll().Count > 0;
         _canGroup = selection.Count >= 2 && selection.All(primitive => primitive.Parent is null);
         _canUngroup = selection.Count == 1
             && selection[0] is Container container
@@ -374,6 +428,7 @@
 
     public void Dispose()
     {
+        _disposed = true;
         PrimitiveService.Changed -= HandleDocumentChanged;
         SimulationConfigStore.Changed -= HandleSimulationConfigChanged;
         ImportRollback.Changed -= HandleImportRollbackChanged;
@@ -582,29 +637,29 @@
 
     private async Task OnImportFileSelected(InputFileChangeEventArgs args)
     {
-        if (_isSaving || _isLoading || _isImporting || _isExporting)
-        {
-            return;
-        }
-
-        ClearPendingOperation();
-        SetDocumentMessage(null, error: false);
-
-        if (args.FileCount == 0)
-        {
-            return;
-        }
-
-        if (args.FileCount != 1)
-        {
-            SetDocumentMessage("Choose one file at a time.", error: true);
-            return;
-        }
-
-        _isImporting = true;
-        StateHasChanged();
         try
         {
+            if (ImportDisabled)
+            {
+                return;
+            }
+
+            ClearPendingOperation();
+            SetDocumentMessage(null, error: false);
+
+            if (args.FileCount == 0)
+            {
+                return;
+            }
+
+            if (args.FileCount != 1)
+            {
+                SetDocumentMessage("Choose one file at a time.", error: true);
+                return;
+            }
+
+            _isImporting = true;
+            StateHasChanged();
             var result = await DocumentFiles.ReadAsync(args.File);
             if (!result.Success)
             {
@@ -616,6 +671,7 @@
 
             _pendingImport = result;
             _pendingOperation = PendingOperation.ImportConfirm;
+            _focusImportConfirmation = true;
         }
         catch (Exception ex)
         {
@@ -625,8 +681,31 @@
         }
         finally
         {
+            // 读取完成后才能清空 input，否则会提前丢掉正在读取的文件引用。
             _isImporting = false;
-            StateHasChanged();
+            if (!_disposed)
+            {
+                await ResetImportInputAsync();
+                StateHasChanged();
+            }
+        }
+    }
+
+    /// <summary>允许用户再次选择同一个文件；失败只记录日志，不破坏导入结果。</summary>
+    private async Task ResetImportInputAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "penelopa.resetFileInput",
+                "#penelopa-import-file-control");
+        }
+        catch (Exception ex) when (ex is JSException
+            or JSDisconnectedException
+            or InvalidOperationException)
+        {
+            Console.Error.WriteLine(
+                $"[Penelopa] ToolPanel import input reset failed: {ex}");
         }
     }
 
@@ -659,8 +738,12 @@
         }
         else
         {
-            SetDocumentMessage(null, error: false);
+            SetDocumentMessage("Document imported.", error: false);
         }
+
+        // 焦点从被移除的确认块移到状态横幅，既播报成功也保留下一步 Tab 顺序。
+        _focusDocumentMessage = true;
+        StateHasChanged();
     }
 
     private void CancelImport()

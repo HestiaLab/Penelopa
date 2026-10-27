@@ -82,6 +82,27 @@ body {
     font-size: 0.75rem;
 }
 
+/* Workspace-level rejection notice for dropped files. It must stay visible
+   above the drop overlay and outside the Tools panel. */
+.penelopa-drop-rejection {
+    position: absolute;
+    z-index: 2100;
+    top: 0.75rem;
+    left: 50%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: min(34rem, calc(100% - 2rem));
+    padding: 0.45rem 0.55rem 0.45rem 0.8rem;
+    border: 1px solid color-mix(in srgb, var(--penelopa-danger) 55%, var(--penelopa-border));
+    border-radius: 0.3rem;
+    background: var(--penelopa-surface);
+    color: var(--penelopa-danger);
+    box-shadow: 0 0.4rem 1rem color-mix(in srgb, var(--penelopa-ink) 18%, transparent);
+    font-size: 0.78rem;
+    transform: translateX(-50%);
+}
+
 button {
     font: inherit;
 }
@@ -231,7 +252,7 @@ h1:focus {
     white-space: nowrap;
 }
 
-.penelopa-shell .atlas-v2-tab-strip [role="tab"][aria-selected="true"] {
+.penelopa-shell .atlas-v2-tab-strip [role="tab"][aria-selected] {
     border-color: var(--penelopa-border);
     border-bottom-color: var(--atlas-tab-bg-active);
     box-shadow: inset 0 2px 0 var(--penelopa-accent);
@@ -265,7 +286,7 @@ h1:focus {
 }
 
 .penelopa-shell .atlas-v2-toolbar button:hover,
-.penelopa-shell .atlas-v2-toolbar button[aria-selected="true"] {
+.penelopa-shell .atlas-v2-toolbar button[aria-selected] {
     background: var(--penelopa-surface);
     color: var(--penelopa-accent);
     box-shadow: inset 0 0 0 1px var(--penelopa-border);
@@ -448,6 +469,14 @@ h1:focus {
     background: var(--penelopa-selection);
 }
 
+/* Programmatic focus (import confirmation, status banner) must stay visible
+   even when the preceding interaction was a pointer. */
+.penelopa-tool-confirm .penelopa-tool-button:focus,
+.penelopa-tool-message:focus {
+    outline: 2px solid var(--penelopa-accent);
+    outline-offset: 1px;
+}
+
 /* A file input is visually merged into a button label; the input remains
    focusable so the native picker is available from the keyboard. */
 .penelopa-file-button {
@@ -472,11 +501,31 @@ h1:focus {
     outline-offset: 1px;
 }
 
+.penelopa-file-button.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.penelopa-file-button.is-disabled:hover {
+    background: var(--penelopa-surface);
+    border-color: var(--penelopa-border);
+    color: var(--penelopa-ink);
+}
+
+.penelopa-file-button.is-disabled:active {
+    background: var(--penelopa-surface);
+}
+
+.penelopa-file-button.is-disabled input[type="file"] {
+    cursor: not-allowed;
+}
+
 .penelopa-tool-warning-list {
     margin: 0.35rem 0 0;
     padding-left: 1.1rem;
     color: var(--penelopa-warning);
     font-size: 0.75rem;
+    overflow-wrap: anywhere;
 }
 
 .penelopa-tree-list {
@@ -804,6 +853,11 @@ h1:focus {
 
 .penelopa-canvas-notice button {
     pointer-events: auto;
+}
+
+.penelopa-canvas-notice.is-error {
+    border-color: color-mix(in srgb, var(--penelopa-danger) 55%, var(--penelopa-border));
+    color: var(--penelopa-danger);
 }
 
 /* The canvas is a focusable keyboard surface; keep the focus ring visible

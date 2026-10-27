@@ -65,4 +65,30 @@ public class DocumentHistoryStateTests
         Assert.NotNull(raised);
         Assert.Equal(DocumentChangeKind.Transient, raised.Value.Kind);
     }
+
+    [Fact]
+    public void UndoRedo_RestoresThreeDocumentStatesInOrder()
+    {
+        var service = new PrimitiveService();
+        service.Add(new Circle { Name = { Value = "A" } });
+        service.Add(new Rectangle { Name = { Value = "B" } });
+        service.Add(new Triangle { Name = { Value = "C" } });
+
+        service.Undo();
+        Assert.Equal(new[] { "A", "B" }, Names(service));
+        service.Undo();
+        Assert.Equal(new[] { "A" }, Names(service));
+        service.Undo();
+        Assert.Empty(Names(service));
+
+        service.Redo();
+        Assert.Equal(new[] { "A" }, Names(service));
+        service.Redo();
+        Assert.Equal(new[] { "A", "B" }, Names(service));
+        service.Redo();
+        Assert.Equal(new[] { "A", "B", "C" }, Names(service));
+    }
+
+    private static string[] Names(IPrimitiveService service)
+        => service.GetAll().Select(primitive => primitive.Name.Value).ToArray();
 }
