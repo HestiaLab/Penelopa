@@ -1,0 +1,770 @@
+{
+  "Version": 2,
+  "Primitives": [
+    {
+      "Id": "00000000-0000-0000-0000-000000000001",
+      "Type": "Rectangle",
+      "Props": {
+        "Name": "Night Card",
+        "PosX": -500,
+        "PosY": -350,
+        "Width": 1000,
+        "Height": 700,
+        "Color": 4278915104
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000002",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Moon",
+        "CenterX": 340,
+        "CenterY": 235,
+        "Radius": 95,
+        "Color": 4294961351
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000003",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Moon Cutout",
+        "CenterX": 388,
+        "CenterY": 258,
+        "Radius": 82,
+        "Color": 4278915104
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000004",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Orbit Glow",
+        "CenterX": 0,
+        "CenterY": 0,
+        "Radius": 310,
+        "Color": 218075043
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000005",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Glow Outer",
+        "CenterX": 0,
+        "CenterY": 0,
+        "Radius": 220,
+        "Color": 184503661
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000006",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Glow Inner",
+        "CenterX": 0,
+        "CenterY": 0,
+        "Radius": 150,
+        "Color": 520047981
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000007",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 1",
+        "CenterX": -400,
+        "CenterY": 300,
+        "Radius": 4,
+        "Color": 3036670151
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000008",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 2",
+        "CenterX": -330,
+        "CenterY": 200,
+        "Radius": 3,
+        "Color": 1694492871
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000009",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 3",
+        "CenterX": -430,
+        "CenterY": 100,
+        "Radius": 2,
+        "Color": 1694492871
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000010",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 4",
+        "CenterX": -380,
+        "CenterY": -40,
+        "Radius": 3,
+        "Color": 3036670151
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000011",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 5",
+        "CenterX": -300,
+        "CenterY": -150,
+        "Radius": 2.5,
+        "Color": 1694492871
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000012",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 6",
+        "CenterX": -420,
+        "CenterY": -260,
+        "Radius": 2,
+        "Color": 1694492871
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000013",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 7",
+        "CenterX": 430,
+        "CenterY": -300,
+        "Radius": 3,
+        "Color": 3036670151
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000014",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 8",
+        "CenterX": 440,
+        "CenterY": 60,
+        "Radius": 2.5,
+        "Color": 1694492871
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000015",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 9",
+        "CenterX": 330,
+        "CenterY": -180,
+        "Radius": 3,
+        "Color": 3036670151
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000016",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Star 10",
+        "CenterX": 150,
+        "CenterY": 300,
+        "Radius": 2,
+        "Color": 1694492871
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000017",
+      "Type": "Container",
+      "Kind": "Rotation",
+      "Props": {
+        "Name": "Orbit Ring",
+        "Rotation": 0
+      },
+      "Children": [
+        {
+          "Id": "00000000-0000-0000-0000-000000000018",
+          "Type": "Container",
+          "Kind": "Offset",
+          "Props": {
+            "Name": "Orbit A",
+            "Offset X": 250,
+            "Offset Y": 0
+          },
+          "Children": [
+            {
+              "Id": "00000000-0000-0000-0000-000000000023",
+              "Type": "Container",
+              "Kind": "Flip",
+              "Props": {
+                "Name": "Orbit Heart A",
+                "Scale X": 1,
+                "Scale Y": 1
+              },
+              "Children": [
+                {
+                  "Id": "00000000-0000-0000-0000-000000000019",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart A Left",
+                    "CenterX": -16,
+                    "CenterY": 18,
+                    "Radius": 18,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000020",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart A Right",
+                    "CenterX": 16,
+                    "CenterY": 18,
+                    "Radius": 18,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000021",
+                  "Type": "Triangle",
+                  "Props": {
+                    "Name": "Orbit Heart A Bottom",
+                    "Vertex1X": -34,
+                    "Vertex1Y": 6,
+                    "Vertex2X": 34,
+                    "Vertex2Y": 6,
+                    "Vertex3X": 0,
+                    "Vertex3Y": -40,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000044",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart A Center",
+                    "CenterX": 0,
+                    "CenterY": 6,
+                    "Radius": 15,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000022",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart A Shine",
+                    "CenterX": -12,
+                    "CenterY": 23,
+                    "Radius": 5,
+                    "Color": 4294956768
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000024",
+          "Type": "Container",
+          "Kind": "Offset",
+          "Props": {
+            "Name": "Orbit B",
+            "Offset X": -125,
+            "Offset Y": 216.506
+          },
+          "Children": [
+            {
+              "Id": "00000000-0000-0000-0000-000000000029",
+              "Type": "Container",
+              "Kind": "Flip",
+              "Props": {
+                "Name": "Orbit Heart B",
+                "Scale X": 1,
+                "Scale Y": 1
+              },
+              "Children": [
+                {
+                  "Id": "00000000-0000-0000-0000-000000000025",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart B Left",
+                    "CenterX": -16,
+                    "CenterY": 18,
+                    "Radius": 18,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000026",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart B Right",
+                    "CenterX": 16,
+                    "CenterY": 18,
+                    "Radius": 18,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000027",
+                  "Type": "Triangle",
+                  "Props": {
+                    "Name": "Orbit Heart B Bottom",
+                    "Vertex1X": -34,
+                    "Vertex1Y": 6,
+                    "Vertex2X": 34,
+                    "Vertex2Y": 6,
+                    "Vertex3X": 0,
+                    "Vertex3Y": -40,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000045",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart B Center",
+                    "CenterX": 0,
+                    "CenterY": 6,
+                    "Radius": 15,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000028",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart B Shine",
+                    "CenterX": -12,
+                    "CenterY": 23,
+                    "Radius": 5,
+                    "Color": 4294956768
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000030",
+          "Type": "Container",
+          "Kind": "Offset",
+          "Props": {
+            "Name": "Orbit C",
+            "Offset X": -125,
+            "Offset Y": -216.506
+          },
+          "Children": [
+            {
+              "Id": "00000000-0000-0000-0000-000000000035",
+              "Type": "Container",
+              "Kind": "Flip",
+              "Props": {
+                "Name": "Orbit Heart C",
+                "Scale X": 1,
+                "Scale Y": 1
+              },
+              "Children": [
+                {
+                  "Id": "00000000-0000-0000-0000-000000000031",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart C Left",
+                    "CenterX": -16,
+                    "CenterY": 18,
+                    "Radius": 18,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000032",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart C Right",
+                    "CenterX": 16,
+                    "CenterY": 18,
+                    "Radius": 18,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000033",
+                  "Type": "Triangle",
+                  "Props": {
+                    "Name": "Orbit Heart C Bottom",
+                    "Vertex1X": -34,
+                    "Vertex1Y": 6,
+                    "Vertex2X": 34,
+                    "Vertex2Y": 6,
+                    "Vertex3X": 0,
+                    "Vertex3Y": -40,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000046",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart C Center",
+                    "CenterX": 0,
+                    "CenterY": 6,
+                    "Radius": 15,
+                    "Color": 4294938531
+                  }
+                },
+                {
+                  "Id": "00000000-0000-0000-0000-000000000034",
+                  "Type": "Circle",
+                  "Props": {
+                    "Name": "Orbit Heart C Shine",
+                    "CenterX": -12,
+                    "CenterY": 23,
+                    "Radius": 5,
+                    "Color": 4294956768
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000036",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Twinkle A",
+        "CenterX": -360,
+        "CenterY": 250,
+        "Radius": 3,
+        "Color": 3707758791
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000037",
+      "Type": "Circle",
+      "Props": {
+        "Name": "Twinkle B",
+        "CenterX": 200,
+        "CenterY": -300,
+        "Radius": 2.5,
+        "Color": 3707758791
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000038",
+      "Type": "Container",
+      "Kind": "Flip",
+      "Props": {
+        "Name": "Heart Beat",
+        "Scale X": 1,
+        "Scale Y": 1
+      },
+      "Children": [
+        {
+          "Id": "00000000-0000-0000-0000-000000000039",
+          "Type": "Circle",
+          "Props": {
+            "Name": "Heart Left",
+            "CenterX": -45,
+            "CenterY": 55,
+            "Radius": 55,
+            "Color": 4294921581
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000040",
+          "Type": "Circle",
+          "Props": {
+            "Name": "Heart Right",
+            "CenterX": 45,
+            "CenterY": 55,
+            "Radius": 55,
+            "Color": 4294921581
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000041",
+          "Type": "Triangle",
+          "Props": {
+            "Name": "Heart Bottom",
+            "Vertex1X": -100,
+            "Vertex1Y": 15,
+            "Vertex2X": 100,
+            "Vertex2Y": 15,
+            "Vertex3X": 0,
+            "Vertex3Y": -110,
+            "Color": 4294921581
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000043",
+          "Type": "Circle",
+          "Props": {
+            "Name": "Heart Center",
+            "CenterX": 0,
+            "CenterY": 20,
+            "Radius": 40,
+            "Color": 4294921581
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000042",
+          "Type": "Circle",
+          "Props": {
+            "Name": "Heart Shine",
+            "CenterX": -38,
+            "CenterY": 72,
+            "Radius": 16,
+            "Color": 4294956768
+          }
+        }
+      ]
+    }
+  ],
+  "SelectionIds": [
+    "00000000-0000-0000-0000-000000000038"
+  ],
+  "Simulation": {
+    "Loop": true,
+    "Tracks": [
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000038",
+        "Property": "Scale X",
+        "Keyframes": [
+          {
+            "Time": 0.0,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 0.35,
+            "Value": 1.1,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 0.7,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 1.8,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 2.15,
+            "Value": 1.08,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 2.5,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 4.0,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 4.35,
+            "Value": 1.06,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 4.7,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 6.0,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000038",
+        "Property": "Scale Y",
+        "Keyframes": [
+          {
+            "Time": 0.0,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 0.35,
+            "Value": 1.1,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 0.7,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 1.8,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 2.15,
+            "Value": 1.08,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 2.5,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 4.0,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 4.35,
+            "Value": 1.06,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 4.7,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 6.0,
+            "Value": 1.0,
+            "Interpolation": "ease-in-out"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000017",
+        "Property": "Rotation",
+        "Keyframes": [
+          {
+            "Time": 0.0,
+            "Value": 0,
+            "Interpolation": "linear"
+          },
+          {
+            "Time": 6.0,
+            "Value": 120,
+            "Interpolation": "linear"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000006",
+        "Property": "Radius",
+        "Keyframes": [
+          {
+            "Time": 0.0,
+            "Value": 150,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 0.7,
+            "Value": 185,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 1.4,
+            "Value": 150,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 2.5,
+            "Value": 150,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 3.2,
+            "Value": 180,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 3.9,
+            "Value": 150,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 4.7,
+            "Value": 150,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 5.4,
+            "Value": 175,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 6.0,
+            "Value": 150,
+            "Interpolation": "ease-in-out"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000036",
+        "Property": "Radius",
+        "Keyframes": [
+          {
+            "Time": 0.0,
+            "Value": 3,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 1.5,
+            "Value": 5,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 3.0,
+            "Value": 3,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 6.0,
+            "Value": 3,
+            "Interpolation": "ease-in-out"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000037",
+        "Property": "Radius",
+        "Keyframes": [
+          {
+            "Time": 0.0,
+            "Value": 2.5,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 2.5,
+            "Value": 4.5,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 5.0,
+            "Value": 2.5,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 6.0,
+            "Value": 2.5,
+            "Interpolation": "ease-in-out"
+          }
+        ]
+      }
+    ]
+  }
+}
