@@ -5,8 +5,8 @@
    focal point. The whole palette is driven by --penelopa-*
    variables: :root defines the light palette, and @media
    (prefers-color-scheme: dark) swaps in a dark variant. Atlas
-   chrome that the variable contract covers (ADR-0023 /
-   REQ-NF-009) is themed through --atlas-* overrides;
+   chrome that the variable contract covers (Atlas ADR-0023 /
+   ED-NF-009) is themed through --atlas-* overrides;
    effect-layer styling (borders, radii, shadows) stays in
    consumer selectors below.
    ============================================================ */
