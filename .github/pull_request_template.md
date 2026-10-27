@@ -15,9 +15,9 @@
 
 - Public API impact (`Penelopa.Core` / `Penelopa.Rendering` / `Penelopa.Web`):
 - NuGet packaging or dependency impact:
-- Documentation impact (`docs/`): keep English canonical and mark the Chinese
-  translation `Outdated` when a normative document changes without a
-  synchronized translation.
+- Documentation impact (`docs/`): delivery documents are Chinese-first; the
+  README stays bilingual. Update the README document index when a normative
+  document changes.
 
 ## AI Assistance
 
