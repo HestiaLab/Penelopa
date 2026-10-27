@@ -4,186 +4,52 @@
 
 **面向 Blazor WebAssembly 的图元对齐编辑器与关键帧仿真工作区。**
 
-Penelopa 在六区域可停靠工作区中承载 SkiaSharp 绘制画布、图元树、对齐操作和属性编辑器，并为圆形、矩形、三角形图元提供六方向对齐（左 / 水平居中 / 右 / 上 / 垂直居中 / 下）。独立的 `/simulation` 页面把 Float 属性编排为关键帧轨道，用于设计验证与调试。
+Penelopa 在六区域可停靠工作区中承载 SkiaSharp 绘制画布、图元树、六方向对齐与强类型属性编辑器。独立的 `/simulation` 页面把 Float 属性编排为关键帧轨道，用于设计验证与调试。
 
 > **在线演示：** https://HestiaLab.github.io/Penelopa/
 
-> **仅支持 v2 文档（破坏性变更）：** Penelopa 现在只读取版本 2 的文档（文件与
-> localStorage 均如此）。v1 与缺失版本文档会被 Load/Import 拒绝并给出迁移
-> 提示；请在升级**之前**用旧版本导出 v1 数据。被拒绝的 v1 localStorage 条目
-> 不会被删除；升级后的第一次 Save 会把旧负载写入
-> `penelopa.document.backup`（只有一个槽位，后续 Save 可能覆盖），并以 v2
-> 写入 `penelopa.document`。详见 [ADR 0008](docs/adr/0008-v2-only-documents.md)。
+> **仅支持 v2 文档：** Load 与 Import 只接受版本 2 的 `.penelopa.json` 文档；v1 与缺失版本文档会被拒绝并给出迁移提示，请在升级前用旧版本导出 v1 数据。当前行为详见[软件需求规格说明书](docs/软件需求规格说明书.md)。
 
 ## 界面预览
 
-![已加载 Loop Study 01 示例的 Penelopa 编辑器（亮色模式）](docs/screenshot.png)
+![已加载 Loop Study 01 示例的 Penelopa 编辑器](docs/assets/images/screenshot.png)
 
-六区域可停靠工作区：SkiaSharp 绘制画布、图元树、对齐工具与属性编辑器。
+六区域可停靠工作区：SkiaSharp 画布、图元树、对齐工具与属性编辑器。
 
-![正在播放 Loop Study 01 的仿真工作区](docs/simulation.png)
+![正在播放 Loop Study 01 的仿真工作区](docs/assets/images/simulation.png)
 
-**Loop Study 01** 是内置的 9 秒媒体播放器示例，包含 5 条关键帧轨道。仿真页只展示当前所选图元的两条轨道，其余场景照常播放。
+仿真工作区播放内置的 9 秒 Loop Study 01 示例，包含 5 条关键帧轨道。
 
-### 试用示例
+## 试用示例
 
 1. 打开在线演示。
 2. 在空编辑器中选择 **Load Loop Study 01**。
 3. 选择 **Simulate**，再按 **Play**。
 
-示例本身就是一份普通 v2 文档。编辑器 Document 区的 **Import file…** / **Export file…** 读写同一套 `.penelopa.json` 格式，且不会改动 localStorage；也可以把 `.penelopa.json` 直接拖到编辑页任意位置。导入可以在编辑、保存、加载或再次导入之前撤销一次。
+## 快速开始
 
-## 功能
-
-- 六区域可停靠工作区，含 Atlas 顶栏/状态栏外壳（状态栏保持静态；顶栏承载 Simulate 入口）
-- 响应式侧边停靠区；1440/1280/1024/900/800/700 视口下画布宽度约
-  731/643/504/436/381/327 CSS px。Atlas 0.3.0 的 160–300px 分割约束仅用于
-  splitter 拖拽，初始比例轨道不会被钳位
-- SkiaSharp 画布与颜色键命中检测，Ctrl+滚轮缩放、空白拖拽平移、Fit 适配内容
-- 圆形 / 矩形 / 三角形图元、容器与 hit-through 钻取选择
-- 基于整体包围盒的六方向对齐，支持幂等检查
-- 属性编辑器：领域校验、单选/多选编辑（共享值、冲突占位、原子写入）、
-  重命名、删除，以及按事务撤销/重做
-- 对根级图元分组/取消分组：使用 identity 容器、单事务撤销；非 identity
-  容器的取消分组有明确的禁用与拒绝路径
-- 画布键盘路径：方向键移动 1 世界单位（Shift 为 10），Delete 删除，
-  Escape 取消手势
-- 独立 `/simulation` 页面：只读画布、本地图元树、关键帧检视器，以及仅展示
-  所选图元轨道的全局时间轴
-- 仿真页使用独立 Atlas 工作区：图元树、画布、检视器与时间轴为受保护区域；
-  工具面板可调整大小、折叠与停靠，画布文档不可关闭或分割；每次进入页面
-  重建默认布局
-- 每个 Float 属性一条关键帧轨道，支持线性/缓动/阶跃/cubic-bezier 插值、
-  拖动定位、1/60s 步进、全局循环与 60FPS 播放
-- 仿真只做预览，停止/离开（含浏览器后退）精确恢复基础值；Save 仅在 Ready
-  可用；Dormant 轨道提供可展开明细、逐条/全部清理（可撤销）；v2 文档格式
-  持久化活动仿真配置
-- 编辑页文档文件 I/O：导入/导出 `.penelopa.json` v2 文件；导入先解析并显示
-  图元/轨道数量与警告，确认后才替换，且不写 localStorage；导入严格按 UTF-8
-  解码（接受 BOM，拒绝 UTF-16 与非法字节序列），警告长度受限；导出使用与
-  Save 相同的负载，在排除 Dormant 轨道时警告，空文档也可正常导出
-- 一次性 `Undo import` 恢复导入前的文档、选区、两套撤销/重做栈与仿真 Loop；
-  持久编辑、配置变更、成功 Save、再次导入/Load 或刷新后失效
-- 将 `.penelopa.json` 拖到编辑页任意位置可导入；工作区显示拖放遮罩，必要时
-  自动切到 Tools，使同一确认框可见。文档操作进行中拖入会被拒绝并在工作区
-  显示提示，不会排队；Import 按钮仍是键盘/可访问路径，隐藏文件控件在每次
-  读取后重置，因此可以再次选择同一文件
-- 空编辑器提供内置 **Loop Study 01** v2 示例；加载后停留在编辑页并选中
-  `Step Indicator`，不会自动播放。若样例请求进行中画布发生变化（新增、
-  Import 或 Load），样例会被取消并显示可见提示
-- 只读仿真画布隐藏编辑器的坐标轴，保持成品预览干净
-- 属性标签、内联错误、树选中状态和 polite 状态实时区域；允许浏览器页面缩放
-- 由 `--penelopa-*` CSS 变量驱动的明亮工作室主题（亮/暗双模式）
-
-> 导入撤销只在编辑页提供且仅一层；选中、视图、Export 与播放不会使它失效，
-> 真正的文档或仿真编辑才会。
-
-## 项目结构
-
-| 项目                       | 职责                              |
-| ------------------------ | ------------------------------- |
-| `src/Penelopa.Web`           | Blazor WebAssembly 应用（承载编辑器与仿真页） |
-| `src/Penelopa.Core`      | 无 UI 依赖的图元模型、历史、对齐与仿真引擎       |
-| `src/Penelopa.Rendering` | SkiaSharp 画布渲染与命中检测             |
-| `tests/`                 | xUnit、bUnit（UI）与 Playwright（E2E）测试 |
-| `docs/adr`               | 坐标空间、历史事务、选择模型、分组、仿真与文件 I/O ADR |
-
-`Penelopa.Core` 不依赖 Blazor 或 SkiaSharp。画布上的浏览器输入通过颜色键缓冲区命中检测转换，经共享图元服务提交，再由 Blazor 投影回各面板。
-
-## 开发
-
-环境要求：
-
-- .NET 6 SDK（`global.json` 固定 6.0.428）
-- `wasm-tools` workload——SkiaSharp WebAssembly 原生资源需要：
+环境要求：.NET 6 SDK（固定 6.0.428）与 `wasm-tools` workload。普通 .NET 构建不要求 Node.js；只有 TypeScript 与 Playwright 测试需要 Node。
 
 ```sh
 dotnet workload install wasm-tools
-```
-
-- SkiaSharp 固定 **2.88.9**（最后一个支持 net6.0 WebAssembly 的稳定版本线；4.x 要求 net8.0+）。
-- Node.js/npm 对普通 .NET 构建是**可选**的：提交的
-  `src/Penelopa.Web/wwwroot/js/penelopa.js` 会在本机没有
-  `node_modules/typescript` 时直接使用。修改 `ts/penelopa.ts`、运行
-  JS/TS 与 Playwright 测试时需要 Node。若希望本地构建重新编译
-  TypeScript，先执行 `npm ci`（CI 总是如此）。
-
-```sh
 dotnet restore Penelopa.sln
 dotnet build Penelopa.sln --no-restore
 dotnet test Penelopa.sln --no-build --no-restore
-dotnet format Penelopa.sln --verify-no-changes --no-restore
-```
-
-运行应用：
-
-```sh
 dotnet run --project src/Penelopa.Web
 ```
 
-TypeScript 门禁与 JS 测试：
-
-```sh
-npm ci
-npm run check:js
-npm run test:js
-```
-
-E2E 测试需要 Node 与 Playwright：
-
-```sh
-npm ci
-npm ci --prefix tests/e2e
-npx --prefix tests/e2e playwright install chromium
-npm run test:e2e
-```
-
-Windows 上可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用系统 Chrome。
-
-覆盖率（Core ≥90%、Rendering ≥85% 行；`Simulation/` 与 `DocumentSerializer`
-另有文件级 90% 门禁）：
-
-```sh
-dotnet test Penelopa.sln --collect:"XPlat Code Coverage" --results-directory artifacts/coverage
-python scripts/check-coverage.py
-```
-
-周期性能基准（编辑器空闲 CPU、仿真实时 tick、选中 200 关键帧轨道与 60 秒
-soak）：
-
-```sh
-cd tests/e2e
-PERF=1 npx playwright test tests/perf.spec.ts tests/simulation-perf.spec.ts
-```
-
-基准分别报告 JS rAF tick、实际执行的 .NET frame 与 SKGLView paint 回调。
-
-NuGet 使用已提交的 `packages.lock.json`；CI 以
-`dotnet restore Penelopa.sln --locked-mode` 恢复，并审计两个 npm 根目录与
-NuGet 依赖的已知漏洞。本地普通 `dotnet restore` 可能更新锁文件。
-
-依赖审计策略：High/Critical 使 CI 失败。bUnit 仅用于测试的 DOM 解析器仍带有
-中危 AngleSharp mXSS 公告（AngleSharp 1.5 修复，但与 bUnit 1.28/1.40 的 API
-不兼容）。它无生产暴露，记录为 S-01 测试栈迁移的前置项；审计未被关闭，也不将
-风险报告为零。
+应用是纯静态 WebAssembly 站点，不需要服务器或数据库。工具链、质量门禁与依赖策略见[软件开发计划](docs/软件开发计划.md)与[软件测试规范](docs/软件测试规范.md)。
 
 ## 文档
 
-| 文档                                                     | 内容                                  |
-| ------------------------------------------------------ | ----------------------------------- |
-| [架构 (zh)](docs/zh/architecture.md)                     | 分层、渲染、对齐语义、可访问性、工具链说明               |
-| [架构 (en)](docs/en/architecture.md)                     | English architecture document       |
-| [仿真动画需求](docs/requirements/simulation.md)            | 仿真动画 v1 需求（已实现）                       |
-| [ADR 0001](docs/adr/0001-coordinate-spaces-and-setbounds.md) | 坐标空间与 `SetBounds` 契约               |
-| [ADR 0002](docs/adr/0002-history-transactions-and-snapshots.md) | 历史事务与快照内容                       |
-| [ADR 0003](docs/adr/0003-selection-model.md)             | 选择规范化与多选编辑                          |
-| [ADR 0004](docs/adr/0004-grouping-deferred.md)           | 分组与取消分组现有图元                           |
-| [ADR 0005](docs/adr/0005-simulation-keyframe-timeline.md) | 关键帧仿真时间轴、预览隔离与持久化                  |
-| [ADR 0006](docs/adr/0006-simulation-atlas-workspace.md)  | 仿真 Atlas 工作区、受保护区域与布局重置            |
-| [ADR 0007](docs/adr/0007-document-file-import-export.md) | v2 JSON 文件导入/导出、内置示例与导入撤销            |
-| [ADR 0008](docs/adr/0008-v2-only-documents.md)           | 仅 v2 读取、v1 破坏性变更与旧数据 backup 行为       |
-
-GitHub Pages 部署工作流保持手动触发（`workflow_dispatch`），发布是显式操作。
+| 文档 | 内容 |
+| --- | --- |
+| [软件开发计划](docs/软件开发计划.md) | 开发过程、里程碑、质量门禁、配置管理与风险 |
+| [软件需求规格说明书](docs/软件需求规格说明书.md) | 产品需求、验收标准、限制与非目标 |
+| [软件概要设计](docs/软件概要设计.md) | 总体架构、模块划分、数据流与关键方案 |
+| [软件详细设计](docs/软件详细设计.md) | 契约、算法、文档格式、状态机与文件映射 |
+| [软件测试规范](docs/软件测试规范.md) | 测试层级、环境、覆盖率与性能门禁、缺陷分级 |
+| [软件测试报告](docs/软件测试报告.md) | 基线 `48cdf6d` 的冻结结果、覆盖率、性能与需求追溯 |
 
 ## 许可
 
