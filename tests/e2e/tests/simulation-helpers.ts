@@ -45,7 +45,7 @@ export async function addRectangleAndAnimate(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Simulate', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Simulation', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'Rectangle', exact: true }).click();
   const posXRow = page.locator('.penelopa-simulation-property')
     .filter({ hasText: 'PosX' })
     .first();

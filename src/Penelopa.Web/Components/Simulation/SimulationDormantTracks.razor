@@ -5,7 +5,7 @@
     <div class="penelopa-simulation-dormant-summary">
         <span>@Tracks.Count inactive track(s) reference deleted primitives.</span>
         <button type="button"
-                class="penelopa-tool-button"
+                class="penelopa-action is-small"
                 disabled="@(!CanEdit)"
                 @onclick="RemoveAllAsync">Remove inactive</button>
     </div>
@@ -22,7 +22,7 @@
                         @track.Keyframes.Count keyframe(s)
                     </span>
                     <button type="button"
-                            class="penelopa-tool-button"
+                            class="penelopa-action is-small"
                             aria-label="@RemoveLabel(track)"
                             disabled="@(!CanEdit)"
                             @onclick="() => RemoveAsync(track)">Remove</button>

@@ -10,13 +10,22 @@
 <div class="penelopa-properties">
     @if (_targets.Count == 0)
     {
-        <p class="penelopa-properties-empty">Select a primitive to view its properties.</p>
+        <div class="penelopa-empty-state penelopa-properties-empty">
+            <PenelopaIcon Name="sliders" Size="22" />
+            <p class="penelopa-empty-title">Nothing selected</p>
+            <p class="penelopa-empty-hint">
+                Select a primitive to view and edit its properties.
+            </p>
+        </div>
     }
     else
     {
-        <div class="penelopa-properties-title">
-            @(_targets.Count == 1 ? _targets[0].Name.Value : $"{_targets.Count} primitives selected")
-        </div>
+        <header class="penelopa-properties-header">
+            <span class="penelopa-properties-type">@TypeLabel</span>
+            <div class="penelopa-properties-title">
+                @(_targets.Count == 1 ? _targets[0].Name.Value : $"{_targets.Count} primitives selected")
+            </div>
+        </header>
         @if (_targets.Count > 1)
         {
             <p class="penelopa-properties-hint">
@@ -24,35 +33,35 @@
                 &ldquo;Multiple values&rdquo; write one value to every primitive.
             </p>
         }
-        @foreach (var prop in _commonProps)
-        {
-            <div class="penelopa-properties-item" @key="prop">
+        <div class="penelopa-properties-fields">
+            @foreach (var prop in _commonProps)
+            {
                 @switch (prop)
                 {
                     case FloatPropValue fpv:
-                        <FloatProp Owners="_targets" PropValue="fpv" />
+                        <FloatProp @key="prop" Owners="_targets" PropValue="fpv" />
                         break;
                     case DoublePropValue dpv:
-                        <DoubleProp Owners="_targets" PropValue="dpv" />
+                        <DoubleProp @key="prop" Owners="_targets" PropValue="dpv" />
                         break;
                     case IntPropValue ipv:
-                        <IntProp Owners="_targets" PropValue="ipv" />
+                        <IntProp @key="prop" Owners="_targets" PropValue="ipv" />
                         break;
                     case BoolPropValue bpv:
-                        <BoolProp Owners="_targets" PropValue="bpv" />
+                        <BoolProp @key="prop" Owners="_targets" PropValue="bpv" />
                         break;
                     case ColorPropValue cpv:
-                        <ColorProp Owners="_targets" PropValue="cpv" />
+                        <ColorProp @key="prop" Owners="_targets" PropValue="cpv" />
                         break;
                     case UintPropValue upv:
-                        <UintProp Owners="_targets" PropValue="upv" />
+                        <UintProp @key="prop" Owners="_targets" PropValue="upv" />
                         break;
                     case StringPropValue spv:
-                        <StringProp Owners="_targets" PropValue="spv" />
+                        <StringProp @key="prop" Owners="_targets" PropValue="spv" />
                         break;
                 }
-            </div>
-        }
+            }
+        </div>
     }
 </div>
 
@@ -62,6 +71,11 @@
 
     [Inject]
     private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    private string TypeLabel
+        => _targets.Count == 1
+            ? _targets[0].GetType().Name
+            : "Multiple selection";
 
     protected override void OnInitialized()
     {

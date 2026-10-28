@@ -4,18 +4,22 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fbfcfd" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#161b22" media="(prefers-color-scheme: dark)" />
     <title>Penelopa</title>
     <base href="/" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link href="_content/Atlas.Blazor/atlas-v2/atlas.css" rel="stylesheet" />
+    <link href="_content/Astrea.Components/astrea-tree.css" rel="stylesheet" />
     <link href="css/app.css" rel="stylesheet" />
     <link href="css/simulation.css" rel="stylesheet" />
 </head>
 
 <body>
-    <div id="app">Loading...</div>
+    <div id="app"><div class="penelopa-loading">Loading Penelopa…</div></div>
 
     <div id="blazor-error-ui">
-        An unhandled error has occurred.
+        Penelopa encountered an unexpected error.
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>

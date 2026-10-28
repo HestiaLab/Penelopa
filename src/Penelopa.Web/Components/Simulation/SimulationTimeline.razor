@@ -13,14 +13,16 @@
         {
             <div class="penelopa-simulation-zoom">
                 <button type="button"
-                        class="penelopa-tool-button"
+                        class="penelopa-action is-small"
                         aria-label="Zoom out timeline"
+                        title="Zoom out timeline"
                         disabled="@(_zoom <= 1)"
                         @onclick="ZoomOut">&#8722;</button>
                 <span class="penelopa-simulation-zoom-value">@_zoom&times;</span>
                 <button type="button"
-                        class="penelopa-tool-button"
+                        class="penelopa-action is-small"
                         aria-label="Zoom in timeline"
+                        title="Zoom in timeline"
                         disabled="@(_zoom >= MaxZoom)"
                         @onclick="ZoomIn">+</button>
             </div>

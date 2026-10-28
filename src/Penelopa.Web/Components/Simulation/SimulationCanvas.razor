@@ -3,6 +3,7 @@
 @using Penelopa.Core.Alignment
 @using Penelopa.Core.Primitives
 @using Penelopa.Rendering
+@using Penelopa.Web.Components
 @using SkiaSharp
 @using SkiaSharp.Views.Blazor
 @implements IAsyncDisposable
@@ -17,10 +18,13 @@
                   style="width: 100%; height: 100%;" />
     </div>
     <button type="button"
-            class="penelopa-canvas-fit"
+            class="penelopa-action is-small penelopa-canvas-fit"
             title="Fit animation to viewport"
             disabled="@(!CanFit)"
-            @onclick="RequestFitAsync">Fit</button>
+            @onclick="RequestFitAsync">
+        <PenelopaIcon Name="fit" Size="12" />
+        <span>Fit</span>
+    </button>
 </div>
 
 @code {

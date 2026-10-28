@@ -2,6 +2,16 @@
   "version": 2,
   "dependencies": {
     "net6.0": {
+      "Astrea.Components": {
+        "type": "Direct",
+        "requested": "[0.8.0, )",
+        "resolved": "0.8.0",
+        "contentHash": "X499NTA1uDxixqKapoyXGKg9jmDS8kgYv/YzBEmXCkRZjCOHK+ZHc22Yntjfx70DnPbWrzW5AtazyiBWf/LpMA==",
+        "dependencies": {
+          "Microsoft.AspNetCore.Components": "6.0.36",
+          "Microsoft.AspNetCore.Components.Web": "6.0.36"
+        }
+      },
       "Atlas.Blazor": {
         "type": "Direct",
         "requested": "[0.3.0, )",
@@ -255,7 +265,7 @@
       "penelopa.rendering": {
         "type": "Project",
         "dependencies": {
-          "Penelopa.Core": "[1.0.0, )",
+          "Penelopa.Core": "[0.0.0-dev, )",
           "SkiaSharp": "[2.88.9, )",
           "SkiaSharp.NativeAssets.Linux": "[2.88.9, )"
         }

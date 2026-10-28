@@ -51,11 +51,14 @@
     @if (_dropMessage is not null)
     {
         <div class="penelopa-drop-rejection" role="alert">
+            <PenelopaIcon Name="warning" Size="14" />
             <span>@_dropMessage</span>
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-icon-button"
                     aria-label="Dismiss import message"
-                    @onclick="DismissDropMessage">&#215;</button>
+                    @onclick="DismissDropMessage">
+                <PenelopaIcon Name="close" Size="12" />
+            </button>
         </div>
     }
 </section>

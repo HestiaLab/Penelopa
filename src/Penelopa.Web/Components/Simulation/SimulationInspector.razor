@@ -2,18 +2,26 @@
 @using System.Globalization
 @using Penelopa.Core.Primitives
 @using Penelopa.Core.Simulation
+@using Penelopa.Web.Components
 @using Penelopa.Web.Services
 
 <div class="penelopa-properties penelopa-simulation-inspector">
     @if (Primitive is null)
     {
-        <p class="penelopa-properties-empty">
-            Select a primitive to inspect its properties.
-        </p>
+        <div class="penelopa-empty-state penelopa-properties-empty">
+            <PenelopaIcon Name="sliders" Size="22" />
+            <p class="penelopa-empty-title">Nothing selected</p>
+            <p class="penelopa-empty-hint">
+                Select a primitive to inspect its animation properties.
+            </p>
+        </div>
     }
     else
     {
-        <div class="penelopa-properties-title">@Primitive.Name.Value</div>
+        <header class="penelopa-properties-header">
+            <span class="penelopa-properties-type">Primitive</span>
+            <div class="penelopa-properties-title">@Primitive.Name.Value</div>
+        </header>
         <p class="penelopa-simulation-hint">
             @(CanEdit ? "Edit keyframes while paused or ready." : "Playback is read-only.")
         </p>
@@ -43,10 +51,13 @@
                     @if (track is null)
                     {
                         <button type="button"
-                                class="penelopa-tool-button"
+                                class="penelopa-action is-small"
                                 aria-label="@($"Animate {property.Name}")"
                                 disabled="@(!CanEdit)"
-                                @onclick="() => AddTrackAsync(property)">Animate</button>
+                                @onclick="() => AddTrackAsync(property)">
+                            <PenelopaIcon Name="keyframe" Size="12" />
+                            <span>Animate</span>
+                        </button>
                     }
                     else
                     {
@@ -65,13 +76,19 @@
                     <h3 class="penelopa-simulation-subtitle">@selectedTrack.PropertyName</h3>
                     <div class="penelopa-simulation-track-actions">
                         <button type="button"
-                                class="penelopa-tool-button"
+                                class="penelopa-action is-small"
                                 disabled="@(!CanEdit)"
-                                @onclick="AddKeyframeAsync">Add keyframe</button>
+                                @onclick="AddKeyframeAsync">
+                            <PenelopaIcon Name="keyframe" Size="12" />
+                            <span>Add keyframe</span>
+                        </button>
                         <button type="button"
-                                class="penelopa-tool-button"
+                                class="penelopa-action is-small"
                                 disabled="@(!CanEdit)"
-                                @onclick="RemoveTrack">Remove track</button>
+                                @onclick="RemoveTrack">
+                            <PenelopaIcon Name="trash" Size="12" />
+                            <span>Remove track</span>
+                        </button>
                     </div>
                 </header>
 
@@ -105,11 +122,11 @@
                                 <td>@FormatInterpolation(keyframeRow.Interpolation)</td>
                                 <td class="penelopa-simulation-keyframe-actions">
                                     <button type="button"
-                                            class="penelopa-tool-button"
+                                            class="penelopa-action is-small"
                                             aria-label="@($"Go to keyframe {rowIndex + 1}")"
                                             @onclick="() => GoToKeyframeAsync(selectedTrack, rowIndex)">Go to</button>
                                     <button type="button"
-                                            class="penelopa-tool-button"
+                                            class="penelopa-action is-small"
                                             aria-label="@($"Delete keyframe {rowIndex + 1}")"
                                             disabled="@(!CanEdit)"
                                             @onclick="() => RemoveKeyframe(rowIndex)">Delete</button>

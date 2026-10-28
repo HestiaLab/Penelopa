@@ -12,51 +12,77 @@
 @implements IDisposable
 
 <div class="penelopa-tools">
-    <h3>Tools</h3>
-
     <div class="penelopa-tool-section">
-        <span class="penelopa-tool-label">Add</span>
+        <h2 class="penelopa-tool-label">Add</h2>
         <div class="penelopa-tool-actions">
-            <button type="button" class="penelopa-tool-button" @onclick="() => Add(() => new Circle())">Circle</button>
-            <button type="button" class="penelopa-tool-button" @onclick="() => Add(() => new Rectangle())">Rectangle</button>
-            <button type="button" class="penelopa-tool-button" @onclick="() => Add(() => new Triangle())">Triangle</button>
+            <button type="button" class="penelopa-action" @onclick="() => Add(() => new Circle())">
+                <PenelopaIcon Name="circle" Size="14" />
+                <span>Circle</span>
+            </button>
+            <button type="button" class="penelopa-action" @onclick="() => Add(() => new Rectangle())">
+                <PenelopaIcon Name="square" Size="14" />
+                <span>Rectangle</span>
+            </button>
+            <button type="button" class="penelopa-action" @onclick="() => Add(() => new Triangle())">
+                <PenelopaIcon Name="triangle" Size="14" />
+                <span>Triangle</span>
+            </button>
         </div>
         <p class="penelopa-tool-hint">Adds into the selected container when one is selected.</p>
     </div>
 
     <div class="penelopa-tool-section">
-        <span class="penelopa-tool-label">Container</span>
+        <h2 class="penelopa-tool-label">Container</h2>
         <div class="penelopa-tool-actions">
-            <button type="button" class="penelopa-tool-button" @onclick="AddOffsetContainer">Offset</button>
-            <button type="button" class="penelopa-tool-button" @onclick="AddRotationContainer">Rotate</button>
-            <button type="button" class="penelopa-tool-button" @onclick="AddFlipContainer">Flip</button>
+            <button type="button" class="penelopa-action" @onclick="AddOffsetContainer">
+                <PenelopaIcon Name="move" Size="14" />
+                <span>Offset</span>
+            </button>
+            <button type="button" class="penelopa-action" @onclick="AddRotationContainer">
+                <PenelopaIcon Name="rotate" Size="14" />
+                <span>Rotate</span>
+            </button>
+            <button type="button" class="penelopa-action" @onclick="AddFlipContainer">
+                <PenelopaIcon Name="flip" Size="14" />
+                <span>Flip</span>
+            </button>
         </div>
     </div>
 
     <div class="penelopa-tool-section">
-        <span class="penelopa-tool-label">Document</span>
+        <h2 class="penelopa-tool-label">Document</h2>
         <div class="penelopa-tool-actions">
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-action"
                     disabled="@(_isSaving || _isLoading || _isImporting || _isExporting || _pendingOperation == PendingOperation.SaveDormant)"
-                    @onclick="SaveDocument">Save</button>
+                    @onclick="SaveDocument">
+                <PenelopaIcon Name="save" Size="14" />
+                <span>Save</span>
+            </button>
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-action"
                     disabled="@(_isSaving || _isLoading || _isImporting || _isExporting)"
-                    @onclick="LoadDocument">Load</button>
+                    @onclick="LoadDocument">
+                <PenelopaIcon Name="folder-open" Size="14" />
+                <span>Load</span>
+            </button>
             <label id="penelopa-import-file-control"
-                   class="penelopa-tool-button penelopa-file-button @(ImportDisabled ? "is-disabled" : string.Empty)"
+                   class="penelopa-action penelopa-file-button @(ImportDisabled ? "is-disabled" : string.Empty)"
                    aria-disabled="@(ImportDisabled ? "true" : "false")">
-                @(_isImporting ? "Importing…" : "Import file…")
+                <PenelopaIcon Name="upload" Size="14" />
+                <span>@(_isImporting ? "Importing…" : "Import file…")</span>
                 <InputFile accept=".json,application/json"
                            disabled="@ImportDisabled"
                            OnChange="OnImportFileSelected"
                            aria-describedby="penelopa-document-file-hint" />
             </label>
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-action"
                     disabled="@(_isSaving || _isLoading || _isImporting || _isExporting)"
-                    @onclick="ExportDocumentAsync">@(_isExporting ? "Exporting…" : "Export file…")</button>
+                    @onclick="ExportDocumentAsync">
+                <PenelopaIcon Name="download" Size="14" />
+                <span>@(_isExporting ? "Exporting…" : "Export file…")</span>
+            </button>
         </div>
         <p class="penelopa-tool-hint" id="penelopa-document-file-hint">
             Save/Load use this browser. Import/Export use a .penelopa.json file.
@@ -86,10 +112,10 @@
                 }
                 <div class="penelopa-tool-actions">
                     <button type="button"
-                            class="penelopa-tool-button"
+                            class="penelopa-action is-primary"
                             @ref="_replaceDocumentButton"
                             @onclick="ConfirmImport">Replace document</button>
-                    <button type="button" class="penelopa-tool-button" @onclick="CancelImport">Cancel import</button>
+                    <button type="button" class="penelopa-action" @onclick="CancelImport">Cancel import</button>
                 </div>
             </div>
         }
@@ -100,8 +126,8 @@
                     Replace the current document and simulation configuration with the saved one?
                 </p>
                 <div class="penelopa-tool-actions">
-                    <button type="button" class="penelopa-tool-button" @onclick="ConfirmLoad">Replace</button>
-                    <button type="button" class="penelopa-tool-button" @onclick="CancelLoad">Cancel</button>
+                    <button type="button" class="penelopa-action is-primary" @onclick="ConfirmLoad">Replace</button>
+                    <button type="button" class="penelopa-action" @onclick="CancelLoad">Cancel</button>
                 </div>
             </div>
         }
@@ -114,11 +140,11 @@
                 </p>
                 <div class="penelopa-tool-actions">
                     <button type="button"
-                            class="penelopa-tool-button"
+                            class="penelopa-action is-primary"
                             disabled="@_isSaving"
                             @onclick="ConfirmDormantSave">Save active only</button>
                     <button type="button"
-                            class="penelopa-tool-button"
+                            class="penelopa-action"
                             disabled="@_isSaving"
                             @onclick="CancelDormantSave">Cancel save</button>
                 </div>
@@ -133,11 +159,11 @@
                 </p>
                 <div class="penelopa-tool-actions">
                     <button type="button"
-                            class="penelopa-tool-button"
+                            class="penelopa-action is-primary"
                             disabled="@_isExporting"
                             @onclick="ConfirmDormantExportAsync">Export active only</button>
                     <button type="button"
-                            class="penelopa-tool-button"
+                            class="penelopa-action"
                             disabled="@_isExporting"
                             @onclick="CancelDormantExport">Cancel export</button>
                 </div>
@@ -154,7 +180,7 @@
                 </p>
                 <div class="penelopa-tool-actions">
                     <button type="button"
-                            class="penelopa-tool-button"
+                            class="penelopa-action"
                             disabled="@(!CanUndoImport)"
                             @onclick="UndoImport">Undo import</button>
                 </div>
@@ -171,42 +197,51 @@
     </div>
 
     <div class="penelopa-tool-section">
-        <span class="penelopa-tool-label">Align</span>
-        <div class="penelopa-tool-actions">
-            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Left)">&#8592; Left</button>
-            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.HCenter)">&#8596; H-Center</button>
-            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Right)">&#8594; Right</button>
-            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Top)">&#8593; Top</button>
-            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.VCenter)">&#8597; V-Center</button>
-            <button type="button" class="penelopa-tool-button" @onclick="() => Align(AlignType.Bottom)">&#8595; Bottom</button>
+        <h2 class="penelopa-tool-label">Align</h2>
+        <div class="penelopa-tool-actions is-align">
+            <button type="button" class="penelopa-action" @onclick="() => Align(AlignType.Left)">&#8592; Left</button>
+            <button type="button" class="penelopa-action" @onclick="() => Align(AlignType.HCenter)">&#8596; H-Center</button>
+            <button type="button" class="penelopa-action" @onclick="() => Align(AlignType.Right)">&#8594; Right</button>
+            <button type="button" class="penelopa-action" @onclick="() => Align(AlignType.Top)">&#8593; Top</button>
+            <button type="button" class="penelopa-action" @onclick="() => Align(AlignType.VCenter)">&#8597; V-Center</button>
+            <button type="button" class="penelopa-action" @onclick="() => Align(AlignType.Bottom)">&#8595; Bottom</button>
         </div>
     </div>
 
     <div class="penelopa-tool-section">
-        <span class="penelopa-tool-label">Selection</span>
+        <h2 class="penelopa-tool-label">Selection</h2>
         <div class="penelopa-tool-actions">
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-action"
                     aria-keyshortcuts="Delete"
                     disabled="@(!_hasSelection)"
-                    @onclick="DeleteSelection">Delete</button>
+                    @onclick="DeleteSelection">
+                <PenelopaIcon Name="trash" Size="14" />
+                <span>Delete</span>
+            </button>
         </div>
         <p class="penelopa-tool-hint">Deletes the selected primitives. Undo with Ctrl+Z.</p>
     </div>
 
     <div class="penelopa-tool-section">
-        <span class="penelopa-tool-label">Group</span>
+        <h2 class="penelopa-tool-label">Group</h2>
         <div class="penelopa-tool-actions">
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-action"
                     aria-describedby="penelopa-group-hint"
                     disabled="@(!_canGroup)"
-                    @onclick="GroupSelection">Group</button>
+                    @onclick="GroupSelection">
+                <PenelopaIcon Name="group" Size="14" />
+                <span>Group</span>
+            </button>
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-action"
                     aria-describedby="penelopa-group-hint"
                     disabled="@(!_canUngroup)"
-                    @onclick="UngroupSelection">Ungroup</button>
+                    @onclick="UngroupSelection">
+                <PenelopaIcon Name="ungroup" Size="14" />
+                <span>Ungroup</span>
+            </button>
         </div>
         <p class="penelopa-tool-hint" id="penelopa-group-hint">
             Group two or more root primitives. Ungroup a root container with an identity

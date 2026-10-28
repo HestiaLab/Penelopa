@@ -157,7 +157,7 @@ test.describe('simulation performance', () => {
     await seedLargeDocument(page, 200);
     await loadDocument(page);
 
-    await page.getByRole('button', { name: 'Rect 0, has animation', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'Rect 0', exact: true }).click();
     const posXRow = page.locator('.penelopa-simulation-property')
       .filter({ hasText: 'PosX' })
       .first();

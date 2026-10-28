@@ -1,18 +1,22 @@
 @namespace Penelopa.Web.Components.Simulation
 @using Penelopa.Core.Simulation
+@using Penelopa.Web.Components
 
 @if (Issues.Count > 0)
 {
     <div class="penelopa-simulation-error penelopa-simulation-issues"
          role="status"
          aria-live="polite">
-        <p>Playback is blocked:</p>
-        <ul>
-            @foreach (var issue in Issues)
-            {
-                <li>@FormatIssue(issue)</li>
-            }
-        </ul>
+        <PenelopaIcon Name="warning" Size="14" />
+        <div class="penelopa-simulation-issues-body">
+            <p>Playback is blocked:</p>
+            <ul>
+                @foreach (var issue in Issues)
+                {
+                    <li>@FormatIssue(issue)</li>
+                }
+            </ul>
+        </div>
     </div>
 }
 

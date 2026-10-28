@@ -3,6 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="Astrea.Components" Version="0.8.0" />
     <PackageVersion Include="Atlas.Blazor" Version="0.3.0" />
     <PackageVersion Include="bunit" Version="1.28.9" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />

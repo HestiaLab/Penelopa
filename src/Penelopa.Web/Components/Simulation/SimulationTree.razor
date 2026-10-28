@@ -1,25 +1,54 @@
 @namespace Penelopa.Web.Components.Simulation
-@using Microsoft.AspNetCore.Components.Rendering
+@using Astrea.Components.Tree
+@using Microsoft.AspNetCore.Components.Web
 @using Penelopa.Core.Primitives
 @using Penelopa.Core.Simulation
+@using Penelopa.Web.Components
 
-<div class="penelopa-tree">
+<div class="penelopa-tree penelopa-simulation-tree">
     @if (Roots.Count == 0)
     {
-        <p class="penelopa-tree-empty">No primitives yet. Return to the editor to add one or load the sample.</p>
+        <div class="penelopa-empty-state">
+            <PenelopaIcon Name="shapes" Size="22" />
+            <p class="penelopa-tree-empty">No primitives yet. Return to the editor to add one or load the sample.</p>
+        </div>
     }
     else
     {
-        <ul class="penelopa-tree-list">
-            @foreach (var primitive in Roots)
-            {
-                @RenderNode(primitive, 0)
-            }
-        </ul>
+        <Tree DataSource="_snapshot.Nodes"
+              class="penelopa-tree-view"
+              aria-label="Simulation primitives"
+              SelectionMode="TreeSelectionMode.Single"
+              SelectedIds="_selectedIds"
+              SelectedIdsChanged="HandleSelectedIdsChanged"
+              ShowLink="false"
+              Indent="14"
+              AutoDetectStructureChanges="false"
+              UseInternalKeyboard="@OperatingSystem.IsBrowser()"
+              OnKeyDown="HandleKeyDown">
+            <IconTemplate Context="icon">
+                <PenelopaIcon Name="@PrimitiveTreeSnapshot.IconFor(icon.Node)" Size="14" />
+            </IconTemplate>
+            <NodeTemplate Context="node">
+                <span class="penelopa-tree-label">@node.Text</span>
+                @if (HasAnimation(node))
+                {
+                    <span class="penelopa-simulation-badge"
+                          aria-hidden="true"
+                          title="Has animation">&#9679;</span>
+                }
+            </NodeTemplate>
+        </Tree>
     }
 </div>
 
 @code {
+    private PrimitiveTreeSnapshot _snapshot = PrimitiveTreeSnapshot.Empty;
+    private IReadOnlyCollection<string> _selectedIds = Array.Empty<string>();
+    private HashSet<Guid> _animatedIds = new();
+    private IReadOnlyList<Primitive>? _lastRoots;
+    private IReadOnlyList<SimulationTrack>? _lastTracks;
+
     [Parameter, EditorRequired]
     public IReadOnlyList<Primitive> Roots { get; set; } = Array.Empty<Primitive>();
 
@@ -32,37 +61,70 @@
     [Parameter]
     public EventCallback<Primitive> OnSelect { get; set; }
 
-    private bool IsSelected(Primitive primitive) => SelectedId == primitive.Id;
+    [Parameter]
+    public EventCallback OnUndoConfig { get; set; }
 
-    private bool HasAnimation(Primitive primitive)
-        => Tracks.Any(track => track.PrimitiveId == primitive.Id);
+    [Parameter]
+    public EventCallback OnRedoConfig { get; set; }
 
-    private RenderFragment RenderNode(Primitive node, int depth) => __builder =>
+    protected override void OnParametersSet()
     {
-        <li>
-            <button type="button"
-                    class="penelopa-tree-item @(IsSelected(node) ? "selected" : string.Empty)"
-                    aria-label="@($"{node.Name.Value}{(HasAnimation(node) ? ", has animation" : string.Empty)}")"
-                    aria-pressed="@(IsSelected(node) ? "true" : "false")"
-                    style="padding-left: @(12 + depth * 16)px"
-                    @onclick="@(() => OnSelect.InvokeAsync(node))">
-                <span>@node.Name.Value</span>
-                @if (HasAnimation(node))
-                {
-                    <span class="penelopa-simulation-badge"
-                          aria-hidden="true"
-                          title="Has animation">&#9679;</span>
-                }
-            </button>
-        </li>
-        if (node is Container container && container.Children.Count > 0)
+        if (!ReferenceEquals(_lastRoots, Roots) || !ReferenceEquals(_lastTracks, Tracks))
         {
-            <ul class="penelopa-tree-children">
-                @foreach (var child in container.Children)
-                {
-                    @RenderNode(child, depth + 1)
-                }
-            </ul>
+            _lastRoots = Roots;
+            _lastTracks = Tracks;
+            RebuildNodes();
         }
-    };
+
+        _selectedIds = SelectedId is { } id
+            ? new[] { id.ToString("N") }
+            : Array.Empty<string>();
+    }
+
+    private void RebuildNodes()
+    {
+        _animatedIds = Tracks
+            .Select(track => track.PrimitiveId)
+            .ToHashSet();
+        _snapshot = PrimitiveTreeSnapshot.Create(Roots, _animatedIds);
+    }
+
+    private bool HasAnimation(TreeNode node)
+        => node.BindData is Primitive primitive
+            && _animatedIds.Contains(primitive.Id);
+
+    /// <summary>
+    /// Astrea stops keydown propagation inside the tree, so the page-level
+    /// simulation shortcuts are forwarded through its OnKeyDown hook.
+    /// </summary>
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (!args.CtrlKey && !args.MetaKey)
+        {
+            return;
+        }
+
+        var key = args.Key.ToLowerInvariant();
+        if (!args.ShiftKey && key == "z")
+        {
+            await OnUndoConfig.InvokeAsync();
+        }
+        else if (key == "y" || (args.ShiftKey && key == "z"))
+        {
+            await OnRedoConfig.InvokeAsync();
+        }
+    }
+
+    private async Task HandleSelectedIdsChanged(
+        IReadOnlyCollection<string> selectedIds)
+    {
+        var selectedId = selectedIds.FirstOrDefault();
+        if (selectedId is null
+            || !_snapshot.ById.TryGetValue(selectedId, out var primitive))
+        {
+            return;
+        }
+
+        await OnSelect.InvokeAsync(primitive);
+    }
 }

@@ -61,7 +61,7 @@ test('empty canvas loads the bundled sample and opens its two-track simulation',
   await page.getByRole('link', { name: 'Simulate', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Simulation', exact: true })).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Step Indicator/ }),
+    page.getByRole('treeitem', { name: /Step Indicator/ }),
   ).toBeVisible();
   await expect(page.locator('.penelopa-simulation-track-label')).toHaveCount(2);
   await expect(page.locator('.penelopa-simulation-time')).toHaveText('0.000s');

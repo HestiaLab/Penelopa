@@ -12,24 +12,26 @@
                 <span class="penelopa-color-swatch-fill" style="background-color: @SwatchColor"></span>
             }
         </span>
-        @for (var index = 0; index < ChannelNames.Length; index++)
-        {
-            var channel = index;
-            <div class="penelopa-color-channel">
-                <label class="penelopa-color-channel-label" for="@ChannelId(channel)">@ChannelNames[channel]</label>
-                <input id="@ChannelId(channel)"
-                       type="number"
-                       min="0"
-                       max="255"
-                       step="1"
-                       class="penelopa-prop-input penelopa-color-channel-input@(channel == _invalidChannel ? " is-invalid" : string.Empty)"
-                       value="@_channelTexts[channel]"
-                       aria-invalid="@(channel == _invalidChannel ? "true" : null)"
-                       aria-describedby="@(Error is not null && (_invalidChannel < 0 || _invalidChannel == channel) ? ErrorId : null)"
-                       @oninput="args => OnChannelInput(channel, args)"
-                       @onchange="args => OnChannelChange(channel, args)" />
-            </div>
-        }
+        <div class="penelopa-color-channels">
+            @for (var index = 0; index < ChannelNames.Length; index++)
+            {
+                var channel = index;
+                <div class="penelopa-color-channel">
+                    <label class="penelopa-color-channel-label" for="@ChannelId(channel)">@ChannelNames[channel]</label>
+                    <input id="@ChannelId(channel)"
+                           type="number"
+                           min="0"
+                           max="255"
+                           step="1"
+                           class="penelopa-prop-input penelopa-color-channel-input@(channel == _invalidChannel ? " is-invalid" : string.Empty)"
+                           value="@_channelTexts[channel]"
+                           aria-invalid="@(channel == _invalidChannel ? "true" : null)"
+                           aria-describedby="@(Error is not null && (_invalidChannel < 0 || _invalidChannel == channel) ? ErrorId : null)"
+                           @oninput="args => OnChannelInput(channel, args)"
+                           @onchange="args => OnChannelChange(channel, args)" />
+                </div>
+            }
+        </div>
     </div>
     @if (HasConflict)
     {

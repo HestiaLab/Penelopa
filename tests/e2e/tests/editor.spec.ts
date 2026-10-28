@@ -463,6 +463,43 @@ test('grouping and ungrouping preserve world positions and selection', async ({ 
   expect(errors).toEqual([]);
 });
 
+test('primitive tree supports multi-select and forwards tree-focused delete/undo', async ({ page }) => {
+  await ready(page);
+  await addPrimitive(page, 'Circle');
+  await addPrimitive(page, 'Rectangle');
+
+  await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
+  const tree = page.getByRole('tree', { name: 'Primitives', exact: true });
+  await expect(tree).toBeVisible();
+
+  const circle = page.getByRole('treeitem', { name: 'Circle', exact: true });
+  const rectangle = page.getByRole('treeitem', { name: 'Rectangle', exact: true });
+  await circle.click();
+  await rectangle.click({ modifiers: ['Control'] });
+  await expect(page.locator('.penelopa-properties-title')).toHaveText('2 primitives selected');
+  await expect(page.locator('.penelopa-tree-item.selected')).toHaveCount(2);
+
+  // The tree container owns focus; Astrea stops keydown propagation, so the
+  // Delete and Ctrl+Z shortcuts must be forwarded by the tree component.
+  await page.keyboard.press('Delete');
+  await expect(page.locator('.penelopa-tree-item')).toHaveCount(0);
+  await expect(page.locator('.penelopa-tree')).toContainText('No primitives yet');
+
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.penelopa-tree-item')).toHaveCount(2);
+
+  await circle.click();
+  const centerX = field(page, 'CenterX').locator('input');
+  const original = await centerX.inputValue();
+  await centerX.fill('123');
+  await centerX.press('Tab');
+  await expect.poll(async () => (await properties(page)).CenterX).toBe('123');
+
+  await circle.click();
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => (await properties(page)).CenterX).toBe(original);
+});
+
 test('ungroup is disabled for non-identity containers', async ({ page }) => {
   await ready(page);
   await addPrimitive(page, 'Offset');
@@ -495,7 +532,7 @@ test('canvas and property inputs expose accessible names and state', async ({ pa
   expect(await radius.locator('label').getAttribute('for')).toBe(id);
 
   await page.getByRole('tab', { name: 'Primitives' }).click();
-  await expect(page.locator('.penelopa-tree-item')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.penelopa-tree-item')).toHaveAttribute('aria-selected', 'true');
 
   await input.focus();
   await input.fill('-5');
