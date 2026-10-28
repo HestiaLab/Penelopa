@@ -454,11 +454,22 @@
       "penelopa.web": {
         "type": "Project",
         "dependencies": {
+          "Astrea.Components": "[0.8.0, )",
           "Atlas.Blazor": "[0.3.0, )",
           "Microsoft.AspNetCore.Components.WebAssembly": "[6.0.36, )",
           "Penelopa.Core": "[0.0.0-dev, )",
           "Penelopa.Rendering": "[0.0.0-dev, )",
           "SkiaSharp.Views.Blazor": "[2.88.9, )"
+        }
+      },
+      "Astrea.Components": {
+        "type": "CentralTransitive",
+        "requested": "[0.8.0, )",
+        "resolved": "0.8.0",
+        "contentHash": "X499NTA1uDxixqKapoyXGKg9jmDS8kgYv/YzBEmXCkRZjCOHK+ZHc22Yntjfx70DnPbWrzW5AtazyiBWf/LpMA==",
+        "dependencies": {
+          "Microsoft.AspNetCore.Components": "6.0.36",
+          "Microsoft.AspNetCore.Components.Web": "6.0.36"
         }
       },
       "Atlas.Blazor": {

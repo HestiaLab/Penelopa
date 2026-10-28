@@ -1,6 +1,8 @@
 @page "/simulation"
 @using System.Diagnostics
+@using System.Globalization
 @using Microsoft.JSInterop
+@using Penelopa.Web.Components
 @using Penelopa.Web.Components.Simulation
 @using Penelopa.Core.Alignment
 @using Penelopa.Core.Primitives
@@ -21,17 +23,28 @@
         <TopToolbarContent>
             <div class="penelopa-simulation-chrome">
                 <header class="penelopa-simulation-topbar">
+                    <div class="penelopa-brand">
+                        <span class="penelopa-brand-mark">
+                            <PenelopaIcon Name="keyframe" Size="16" />
+                        </span>
+                        <h1 class="penelopa-simulation-title" tabindex="-1">Simulation</h1>
+                    </div>
                     <div class="penelopa-simulation-nav">
                         <button type="button"
-                                class="penelopa-tool-button penelopa-simulation-back"
-                                @onclick="BackToEditorAsync">Back to editor</button>
-                        <h1 class="penelopa-simulation-title" tabindex="-1">Simulation</h1>
+                                class="penelopa-action is-ghost penelopa-simulation-back"
+                                @onclick="BackToEditorAsync">
+                            <PenelopaIcon Name="back" Size="14" />
+                            <span>Back to editor</span>
+                        </button>
                         <button type="button"
-                                class="penelopa-tool-button"
+                                class="penelopa-action"
                                 disabled="@(!CanSave || _pendingDormantSave)"
                                 aria-describedby="simulation-save-hint"
                                 title="@(CanSave ? "Save document and animation" : "Stop playback to save")"
-                                @onclick="SaveAsync">Save</button>
+                                @onclick="SaveAsync">
+                            <PenelopaIcon Name="save" Size="14" />
+                            <span>Save</span>
+                        </button>
                         <span id="simulation-save-hint" class="penelopa-visually-hidden">
                             @(CanSave
                                 ? "Saves the document and active animation tracks."
@@ -59,13 +72,19 @@
 
                 @if (_errorMessage is not null)
                 {
-                    <p class="penelopa-simulation-error" role="alert">@_errorMessage</p>
+                    <p class="penelopa-simulation-error" role="alert">
+                        <PenelopaIcon Name="error" Size="14" />
+                        <span>@_errorMessage</span>
+                    </p>
                 }
                 <SimulationIssueSummary Issues="@_blockingIssues" />
                 @if (_saveMessage is not null)
                 {
                     <p class="penelopa-simulation-save-message @(_saveError ? "is-error" : string.Empty)"
-                       role="@(_saveError ? "alert" : "status")">@_saveMessage</p>
+                       role="@(_saveError ? "alert" : "status")">
+                        <PenelopaIcon Name="@(_saveError ? "error" : "check")" Size="14" />
+                        <span>@_saveMessage</span>
+                    </p>
                 }
                 @if (_pendingDormantSave)
                 {
@@ -73,10 +92,10 @@
                         <span>@_dormantTracks.Count inactive track(s) will not be saved.</span>
                         <div class="penelopa-simulation-save-confirm-actions">
                             <button type="button"
-                                    class="penelopa-tool-button"
+                                    class="penelopa-action is-small is-primary"
                                     @onclick="SaveAsync">Save active only</button>
                             <button type="button"
-                                    class="penelopa-tool-button"
+                                    class="penelopa-action is-small"
                                     @onclick="CancelDormantSave">Cancel save</button>
                         </div>
                     </div>
@@ -97,6 +116,28 @@
                 }
             </div>
         </TopToolbarContent>
+        <StatusBarContent>
+            <footer class="penelopa-statusbar"
+                    data-testid="penelopa-simulation-status-bar"
+                    role="status"
+                    aria-live="polite">
+                <span class="penelopa-statusbar-message">Animation preview</span>
+                <span class="penelopa-statusbar-items">
+                    <span class="penelopa-statusbar-item" title="Primitives in the document">
+                        <PenelopaIcon Name="shapes" Size="12" />
+                        <span>@PrimitiveCount @(PrimitiveCount == 1 ? "primitive" : "primitives")</span>
+                    </span>
+                    <span class="penelopa-statusbar-item" title="Active simulation tracks">
+                        <PenelopaIcon Name="signal" Size="12" />
+                        <span>@ActiveTrackCount @(ActiveTrackCount == 1 ? "track" : "tracks")</span>
+                    </span>
+                    <span class="penelopa-statusbar-item" title="Playable duration">
+                        <PenelopaIcon Name="clock" Size="12" />
+                        <span>@DurationText</span>
+                    </span>
+                </span>
+            </footer>
+        </StatusBarContent>
         <ContentRoutes>
             <AtlasContentRoute Kind="@SimulationContentKinds.Tree">
                 <ChildContent>
@@ -105,7 +146,9 @@
                         <SimulationTree Roots="@_roots"
                                         SelectedId="@_selectedId"
                                         Tracks="@ConfigStore.Config.Tracks"
-                                        OnSelect="@SelectPrimitive" />
+                                        OnSelect="@SelectPrimitive"
+                                        OnUndoConfig="@UndoConfig"
+                                        OnRedoConfig="@RedoConfig" />
                     </aside>
                 </ChildContent>
             </AtlasContentRoute>
@@ -240,6 +283,15 @@
     private bool CanStep => CanPlay;
 
     private double TimelineDuration => _runtime?.Duration ?? 0d;
+
+    private int ActiveTrackCount
+        => ConfigStore.Config.Tracks.Count - _dormantTracks.Count;
+
+    private int PrimitiveCount
+        => DocumentFileService.CountPrimitives(_roots);
+
+    private string DurationText
+        => TimelineDuration.ToString("0.###", CultureInfo.InvariantCulture) + "s";
 
     private bool CanSave => RuntimeState == SimulationState.Ready;
 

@@ -1,6 +1,7 @@
 @namespace Penelopa.Web.Components
 @using Atlas.Blazor.Content
-@using Microsoft.AspNetCore.Components.Rendering
+@using Astrea.Components.Tree
+@using Microsoft.AspNetCore.Components.Web
 @using Penelopa.Core.Primitives
 @using Penelopa.Core.Services
 @using DocumentState = Penelopa.Core.Services.DocumentState
@@ -10,21 +11,41 @@
 <div class="penelopa-tree">
     @if (_state.Roots.Count == 0)
     {
-        <p class="penelopa-tree-empty">No primitives yet. Add one from the Tools panel, or load the sample from the canvas.</p>
+        <div class="penelopa-empty-state">
+            <PenelopaIcon Name="shapes" Size="22" />
+            <p class="penelopa-empty-title">No primitives yet</p>
+            <p class="penelopa-empty-hint">
+                Add one from the Tools panel, or load the sample from the canvas.
+            </p>
+        </div>
     }
     else
     {
-        <ul class="penelopa-tree-list">
-            @foreach (var primitive in _state.Roots)
-            {
-                @RenderNode(primitive, 0)
-            }
-        </ul>
+        <Tree DataSource="_snapshot.Nodes"
+              class="penelopa-tree-view penelopa-tree-list"
+              aria-label="Primitives"
+              SelectionMode="TreeSelectionMode.Multiple"
+              SelectedIds="_selectedIds"
+              SelectedIdsChanged="HandleSelectedIdsChanged"
+              ShowLink="false"
+              Indent="14"
+              AutoDetectStructureChanges="false"
+              UseInternalKeyboard="@OperatingSystem.IsBrowser()"
+              OnKeyDown="HandleKeyDown">
+            <IconTemplate Context="icon">
+                <PenelopaIcon Name="@PrimitiveTreeSnapshot.IconFor(icon.Node)" Size="14" />
+            </IconTemplate>
+            <NodeTemplate Context="node">
+                <span class="penelopa-tree-label">@LabelFor(node)</span>
+            </NodeTemplate>
+        </Tree>
     }
 </div>
 
 @code {
     private DocumentState _state = DocumentState.Empty;
+    private PrimitiveTreeSnapshot _snapshot = PrimitiveTreeSnapshot.Empty;
+    private IReadOnlyCollection<string> _selectedIds = Array.Empty<string>();
 
     [Inject]
     private IPrimitiveService PrimitiveService { get; set; } = null!;
@@ -33,44 +54,86 @@
     {
         base.OnInitialized();
         _state = PrimitiveService.GetState();
+        _snapshot = PrimitiveTreeSnapshot.Create(_state.Roots);
+        RefreshSelectionIds();
         PrimitiveService.Changed += HandleDocumentChanged;
     }
 
     private void HandleDocumentChanged(DocumentChange change)
     {
         _state = change.State;
+        if ((change.Kind & DocumentChangeKind.Structure) != 0)
+        {
+            _snapshot = PrimitiveTreeSnapshot.Create(_state.Roots);
+        }
+
+        RefreshSelectionIds();
         StateHasChanged();
     }
 
-    private bool IsSelected(Primitive primitive)
-        => _state.Selection.Contains(primitive);
-
-    private void Select(Primitive primitive)
+    private void RefreshSelectionIds()
     {
-        PrimitiveService.SetSelected(primitive);
+        _selectedIds = _state.Selection
+            .Select(primitive => primitive.Id.ToString("N"))
+            .ToArray();
     }
 
-    private RenderFragment RenderNode(Primitive node, int depth) => __builder =>
+    private static string LabelFor(TreeNode node)
+        => node.BindData is Primitive primitive
+            ? primitive.Name.Value
+            : node.Text;
+
+    private void HandleSelectedIdsChanged(
+        IReadOnlyCollection<string> selectedIds)
     {
-        <li>
-            <button type="button"
-                    class="penelopa-tree-item @(IsSelected(node) ? "selected" : "")"
-                    aria-pressed="@(IsSelected(node) ? "true" : "false")"
-                    style="padding-left: @(12 + depth * 16)px"
-                    @onclick="() => Select(node)">
-                @node.Name.Value
-            </button>
-        </li>
-        if (node is Container container && container.Children.Count > 0)
+        if (selectedIds.Count == 0)
         {
-            <ul class="penelopa-tree-children">
-                @foreach (var child in container.Children)
-                {
-                    @RenderNode(child, depth + 1)
-                }
-            </ul>
+            PrimitiveService.ClearSelection();
+            return;
         }
-    };
+
+        var selection = new List<Primitive>(selectedIds.Count);
+        foreach (var selectedId in selectedIds)
+        {
+            if (_snapshot.ById.TryGetValue(selectedId, out var primitive))
+            {
+                selection.Add(primitive);
+            }
+        }
+
+        if (selection.Count > 0)
+        {
+            PrimitiveService.SetSelectedRange(selection);
+        }
+    }
+
+    /// <summary>
+    /// Astrea stops keydown propagation inside the tree, so the editor-level
+    /// Delete, Undo and Redo shortcuts are forwarded through its OnKeyDown hook.
+    /// </summary>
+    private void HandleKeyDown(KeyboardEventArgs args)
+    {
+        var modifier = args.CtrlKey || args.MetaKey;
+        var key = args.Key.ToLowerInvariant();
+        if (modifier)
+        {
+            if (!args.ShiftKey && key == "z")
+            {
+                PrimitiveService.Undo();
+            }
+            else if (key == "y" || (args.ShiftKey && key == "z"))
+            {
+                PrimitiveService.Redo();
+            }
+
+            return;
+        }
+
+        if (args.Key == "Delete")
+        {
+            PrimitiveService.RemoveRange(PrimitiveService.GetSelection());
+        }
+    }
 
     public void Dispose()
     {

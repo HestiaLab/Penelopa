@@ -312,7 +312,7 @@ public class PanelStateTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         var cut = RenderComponent<PrimitiveTreePanel>();
-        Assert.Equal("false", cut.Find(".penelopa-tree-item").GetAttribute("aria-pressed"));
+        Assert.Equal("false", cut.Find(".penelopa-tree-item").GetAttribute("aria-selected"));
 
         await cut.InvokeAsync(() => _service.SetSelected(circle));
 
@@ -320,7 +320,31 @@ public class PanelStateTests : TestContext
         {
             var item = cut.Find(".penelopa-tree-item");
             Assert.Contains("selected", item.ClassList);
-            Assert.Equal("true", item.GetAttribute("aria-pressed"));
+            Assert.Equal("true", item.GetAttribute("aria-selected"));
+        });
+    }
+
+    [Fact]
+    public async Task TreePanel_ReflectsMultiSelectionFromService()
+    {
+        var circle = new Circle();
+        var rectangle = new Rectangle();
+        _service.Add(circle);
+        _service.Add(rectangle);
+        var cut = RenderComponent<PrimitiveTreePanel>();
+
+        await cut.InvokeAsync(() =>
+            _service.SetSelectedRange(new Primitive[] { circle, rectangle }));
+
+        cut.WaitForAssertion(() =>
+        {
+            var items = cut.FindAll(".penelopa-tree-item");
+            Assert.Equal(2, items.Count);
+            Assert.All(items, item =>
+            {
+                Assert.Contains("selected", item.ClassList);
+                Assert.Equal("true", item.GetAttribute("aria-selected"));
+            });
         });
     }
 

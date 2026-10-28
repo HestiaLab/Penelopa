@@ -60,17 +60,17 @@ public class SimulationShellTests : TestContext
                     this,
                     primitive => selected = primitive)));
 
-        var buttons = cut.FindAll("button");
-        Assert.Equal(2, buttons.Count);
-        Assert.Contains("Group", buttons[0].TextContent);
-        Assert.Contains("Child", buttons[1].TextContent);
-        Assert.Equal("false", buttons[0].GetAttribute("aria-pressed"));
-        Assert.Equal("true", buttons[1].GetAttribute("aria-pressed"));
-        Assert.Contains("selected", buttons[1].ClassList);
+        var items = cut.FindAll("[role='treeitem']");
+        Assert.Equal(2, items.Count);
+        Assert.Contains("Group", items[0].TextContent);
+        Assert.Contains("Child", items[1].TextContent);
+        Assert.Equal("false", items[0].GetAttribute("aria-selected"));
+        Assert.Equal("true", items[1].GetAttribute("aria-selected"));
+        Assert.Contains("selected", items[1].ClassList);
         Assert.Single(cut.FindAll(".penelopa-simulation-badge"));
 
-        buttons[0].Click();
-        Assert.Same(container, selected);
+        items[0].QuerySelector(".tree-node-content__main")!.Click();
+        cut.WaitForAssertion(() => Assert.Same(container, selected));
     }
 
     [Fact]

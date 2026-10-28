@@ -56,7 +56,7 @@ test('simulation smoke loads, plays, pauses, and stops a saved animation', async
   await page.getByRole('link', { name: 'Simulate', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Simulation', exact: true })).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Animated Rectangle/ }),
+    page.getByRole('treeitem', { name: /Animated Rectangle/ }),
   ).toBeVisible();
   await expect(page.locator('.penelopa-simulation-time')).toHaveText('0.000s');
   expect(await page.evaluate(() => Object.hasOwn(window.penelopa, 'getSimulationTickCount')))
@@ -64,7 +64,7 @@ test('simulation smoke loads, plays, pauses, and stops a saved animation', async
   expect(await page.evaluate(() => Object.hasOwn(window.penelopa, 'getSimulationPaintCount')))
     .toBe(false);
 
-  await page.getByRole('button', { name: /Animated Rectangle/ }).click();
+  await page.getByRole('treeitem', { name: /Animated Rectangle/ }).click();
   await expect(
     page.locator('.penelopa-simulation-property').filter({ hasText: 'PosX' }),
   ).toBeVisible();
@@ -104,6 +104,44 @@ test('simulation page shows an empty state without a document', async ({ page })
     page.getByText('No primitives yet. Return to the editor to add one or load the sample.'),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
+  await expectSimulationClean(page, errors);
+});
+
+test('simulation tree supports keyboard selection and keeps config undo shortcuts', async ({ page }) => {
+  const errors = collectSimulationErrors(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.getByRole('link', { name: 'Simulate', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Simulation', exact: true })).toBeVisible();
+
+  const tree = page.getByRole('tree', { name: 'Simulation primitives' });
+  await expect(tree).toBeVisible();
+  await tree.focus();
+  await page.keyboard.press('ArrowDown');
+
+  await expect.poll(async () => {
+    const activeId = await tree.getAttribute('aria-activedescendant');
+    return activeId === null
+      ? null
+      : await page.locator(`#${activeId} .penelopa-tree-label`).textContent();
+  }).toBe('Rectangle');
+
+  await page.keyboard.press('Space');
+  await expect(page.locator('.penelopa-properties-title')).toHaveText('Rectangle');
+  await expect(page.getByRole('treeitem', { name: 'Rectangle', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+
+  const posXRow = page.locator('.penelopa-simulation-property')
+    .filter({ hasText: 'PosX' })
+    .first();
+  await posXRow.getByRole('button', { name: 'Animate PosX', exact: true }).click();
+  await expect(posXRow).toContainText('2 keyframe(s)');
+
+  await tree.focus();
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.penelopa-simulation-property-meta')
+    .filter({ hasText: 'keyframe' })).toHaveCount(0);
   await expectSimulationClean(page, errors);
 });
 
@@ -173,7 +211,7 @@ test('simulation page reports and removes dormant tracks', async ({ page }) => {
   await page.getByRole('button', { name: 'Back to editor', exact: true }).click();
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await page.locator('.penelopa-tree')
-    .getByRole('button', { name: 'Rectangle', exact: true })
+    .getByRole('treeitem', { name: 'Rectangle', exact: true })
     .click();
   await page.keyboard.press('Delete');
 
@@ -204,7 +242,7 @@ test('simulation save persists animation config across reload and load', async (
     .toContainText('Document loaded.');
 
   await page.getByRole('link', { name: 'Simulate', exact: true }).click();
-  await page.getByRole('button', { name: /^Rectangle/ }).click();
+  await page.getByRole('treeitem', { name: /^Rectangle/ }).click();
   const posXRow = page.locator('.penelopa-simulation-property')
     .filter({ hasText: 'PosX' })
     .first();
@@ -274,7 +312,7 @@ test('leaving the simulation page while playing restores base values', async ({ 
 
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await page.locator('.penelopa-tree')
-    .getByRole('button', { name: 'Rectangle', exact: true })
+    .getByRole('treeitem', { name: 'Rectangle', exact: true })
     .click();
   const posX = page.locator('.penelopa-prop-field')
     .filter({ hasText: 'PosX' })

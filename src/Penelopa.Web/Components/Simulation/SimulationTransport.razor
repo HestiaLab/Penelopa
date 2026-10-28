@@ -1,41 +1,65 @@
 @namespace Penelopa.Web.Components.Simulation
 @using Penelopa.Core.Simulation
+@using Penelopa.Web.Components
 @using Penelopa.Web.Services
 
-<div class="penelopa-simulation-transport">
+<div class="penelopa-simulation-transport" role="group" aria-label="Playback controls">
     <button type="button"
-            class="penelopa-tool-button"
+            class="penelopa-action is-small is-primary"
             disabled="@PrimaryDisabled"
-            @onclick="PrimaryAsync">@PrimaryLabel</button>
+            @onclick="PrimaryAsync">
+        <PenelopaIcon Name="@PrimaryIcon" Size="14" />
+        <span>@PrimaryLabel</span>
+    </button>
     <button type="button"
-            class="penelopa-tool-button"
+            class="penelopa-action is-small"
             disabled="@(!CanStop)"
-            @onclick="StopAsync">Stop</button>
+            @onclick="StopAsync">
+        <PenelopaIcon Name="stop" Size="14" />
+        <span>Stop</span>
+    </button>
+    <span class="penelopa-transport-divider" aria-hidden="true"></span>
     <button type="button"
-            class="penelopa-tool-button"
+            class="penelopa-action is-small"
             aria-label="Step back 1/60 second"
+            title="Step back 1/60 second"
             disabled="@(!CanStep)"
             @onclick="StepBackAsync">-1/60</button>
     <button type="button"
-            class="penelopa-tool-button"
+            class="penelopa-action is-small"
             aria-label="Step forward 1/60 second"
+            title="Step forward 1/60 second"
             disabled="@(!CanStep)"
             @onclick="StepForwardAsync">+1/60</button>
     <button type="button"
-            class="penelopa-tool-button"
+            class="penelopa-action is-small"
             aria-pressed="@(Loop ? "true" : "false")"
             disabled="@(!CanLoop)"
-            @onclick="ToggleLoopAsync">Loop</button>
+            @onclick="ToggleLoopAsync">
+        <PenelopaIcon Name="loop" Size="14" />
+        <span>Loop</span>
+    </button>
+    <span class="penelopa-transport-divider" aria-hidden="true"></span>
     <button type="button"
-            class="penelopa-tool-button"
+            class="penelopa-action is-small"
             disabled="@(!CanUndo)"
-            @onclick="UndoAsync">Undo</button>
+            @onclick="UndoAsync">
+        <PenelopaIcon Name="undo" Size="14" />
+        <span>Undo</span>
+    </button>
     <button type="button"
-            class="penelopa-tool-button"
+            class="penelopa-action is-small"
             disabled="@(!CanRedo)"
-            @onclick="RedoAsync">Redo</button>
+            @onclick="RedoAsync">
+        <PenelopaIcon Name="redo" Size="14" />
+        <span>Redo</span>
+    </button>
+    <span class="penelopa-transport-divider" aria-hidden="true"></span>
     <span class="penelopa-simulation-status" aria-live="polite">@State</span>
-    <SimulationTimeReadout Channel="@Channel" />
+    <span class="penelopa-transport-readout">
+        <PenelopaIcon Name="clock" Size="12" />
+        <SimulationTimeReadout Channel="@Channel" />
+    </span>
 </div>
 
 @code {
@@ -97,6 +121,9 @@
         SimulationState.Paused or SimulationState.Preview => "Resume",
         _ => "Play",
     };
+
+    private string PrimaryIcon
+        => State == SimulationState.Playing ? "pause" : "play";
 
     private bool PrimaryDisabled
         => State != SimulationState.Playing && !CanPlay;

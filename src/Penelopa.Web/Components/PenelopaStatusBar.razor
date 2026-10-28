@@ -1,8 +1,75 @@
 @namespace Penelopa.Web.Components
+@using Penelopa.Core.Services
+@using Penelopa.Core.Simulation
+@using Penelopa.Web.Services
+@implements IDisposable
 
 <footer class="penelopa-statusbar" data-testid="penelopa-status-bar" role="status" aria-live="polite">
-    <span class="penelopa-ok">●</span>
-    <span>Ready</span>
-    <span class="penelopa-status-spacer"></span>
-    <span>Diagram</span>
+    <span class="penelopa-statusbar-message">Ready</span>
+    <span class="penelopa-statusbar-items">
+        <span class="penelopa-statusbar-item" title="Active document">
+            <PenelopaIcon Name="file" Size="12" />
+            <span class="penelopa-statusbar-text">Diagram</span>
+        </span>
+        <span class="penelopa-statusbar-item" title="Primitives in the document">
+            <PenelopaIcon Name="shapes" Size="12" />
+            <span>@_primitiveCount @(_primitiveCount == 1 ? "primitive" : "primitives")</span>
+        </span>
+        @if (_selectedCount > 0)
+        {
+            <span class="penelopa-statusbar-item" title="Selected primitives">
+                <PenelopaIcon Name="check" Size="12" />
+                <span>@_selectedCount selected</span>
+            </span>
+        }
+        <span class="penelopa-statusbar-item" title="Simulation tracks">
+            <PenelopaIcon Name="signal" Size="12" />
+            <span>@_trackCount @(_trackCount == 1 ? "track" : "tracks")</span>
+        </span>
+    </span>
 </footer>
+
+@code {
+    private int _primitiveCount;
+    private int _selectedCount;
+    private int _trackCount;
+
+    [Inject]
+    private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    [Inject]
+    private SimulationConfigStore ConfigStore { get; set; } = null!;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        RefreshCounts();
+        PrimitiveService.Changed += HandleDocumentChanged;
+        ConfigStore.Changed += HandleConfigChanged;
+    }
+
+    private void HandleDocumentChanged(DocumentChange change)
+    {
+        RefreshCounts();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleConfigChanged()
+    {
+        RefreshCounts();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshCounts()
+    {
+        _primitiveCount = DocumentFileService.CountPrimitives(PrimitiveService.GetAll());
+        _selectedCount = PrimitiveService.GetSelection().Count;
+        _trackCount = ConfigStore.Config.Tracks.Count;
+    }
+
+    public void Dispose()
+    {
+        PrimitiveService.Changed -= HandleDocumentChanged;
+        ConfigStore.Changed -= HandleConfigChanged;
+    }
+}

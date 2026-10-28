@@ -18,7 +18,7 @@ test('editor dormant save confirmation is cancelled by Load and never overwrites
 
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await page.locator('.penelopa-tree')
-    .getByRole('button', { name: 'Rectangle', exact: true })
+    .getByRole('treeitem', { name: 'Rectangle', exact: true })
     .click();
   await page.keyboard.press('Delete');
   await page.getByRole('tab', { name: 'Tools', exact: true }).click();
@@ -51,7 +51,7 @@ test('browser back while playing restores the editor base value without reselect
   await page.getByRole('button', { name: 'Back to editor', exact: true }).click();
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await page.locator('.penelopa-tree')
-    .getByRole('button', { name: 'Rectangle', exact: true })
+    .getByRole('treeitem', { name: 'Rectangle', exact: true })
     .click();
   const editorCanvas = page.getByRole('application', { name: 'Drawing canvas' });
   const baseCanvas = await editorCanvas.screenshot();
@@ -107,7 +107,7 @@ test('dormant details list removes one track and undo restores it', async ({ pag
   await page.getByRole('button', { name: 'Back to editor', exact: true }).click();
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await page.locator('.penelopa-tree')
-    .getByRole('button', { name: 'Rectangle', exact: true })
+    .getByRole('treeitem', { name: 'Rectangle', exact: true })
     .click();
   await page.keyboard.press('Delete');
   await page.getByRole('link', { name: 'Simulate', exact: true }).click();
@@ -179,7 +179,7 @@ test('browser back from preview restores base values without reselecting', async
   await page.getByRole('button', { name: 'Back to editor', exact: true }).click();
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await page.locator('.penelopa-tree')
-    .getByRole('button', { name: 'Rectangle', exact: true })
+    .getByRole('treeitem', { name: 'Rectangle', exact: true })
     .click();
   await page.getByRole('link', { name: 'Simulate', exact: true }).click();
 
@@ -304,7 +304,7 @@ test('loading a document with a null primitive reports a readable error and keep
 
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await expect(page.locator('.penelopa-tree')
-    .getByRole('button', { name: 'Rectangle', exact: true })).toBeVisible();
+    .getByRole('treeitem', { name: 'Rectangle', exact: true })).toBeVisible();
 
   await expectSimulationClean(page, errors);
 });

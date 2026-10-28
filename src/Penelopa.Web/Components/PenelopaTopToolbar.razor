@@ -1,8 +1,75 @@
 @namespace Penelopa.Web.Components
+@using Penelopa.Core.Services
+@implements IDisposable
 
 <header class="penelopa-topbar" data-testid="penelopa-top-toolbar">
-    <div class="penelopa-product" aria-label="Penelopa">Penelopa</div>
-    <a class="penelopa-topbar-link"
-       data-testid="penelopa-simulate-link"
-       href="simulation">Simulate</a>
+    <div class="penelopa-brand">
+        <span class="penelopa-brand-mark">
+            <PenelopaIcon Name="shapes" Size="16" />
+        </span>
+        <span class="penelopa-brand-title">Penelopa</span>
+        <span class="penelopa-brand-subtitle">Primitive studio</span>
+    </div>
+    <div class="penelopa-topbar-actions" role="group" aria-label="Workspace actions">
+        <button type="button"
+                class="penelopa-icon-button"
+                disabled="@(!_canUndo)"
+                aria-label="Undo document change"
+                title="Undo (Ctrl+Z)"
+                @onclick="Undo">
+            <PenelopaIcon Name="undo" Size="16" />
+        </button>
+        <button type="button"
+                class="penelopa-icon-button"
+                disabled="@(!_canRedo)"
+                aria-label="Redo document change"
+                title="Redo (Ctrl+Y)"
+                @onclick="Redo">
+            <PenelopaIcon Name="redo" Size="16" />
+        </button>
+        <span class="penelopa-topbar-divider" aria-hidden="true"></span>
+        <a class="penelopa-action"
+           data-testid="penelopa-simulate-link"
+           href="simulation"
+           title="Open the simulation workspace">
+            <PenelopaIcon Name="play" Size="14" />
+            <span>Simulate</span>
+        </a>
+    </div>
 </header>
+
+@code {
+    private bool _canUndo;
+    private bool _canRedo;
+
+    [Inject]
+    private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        RefreshHistoryState();
+        PrimitiveService.Changed += HandleDocumentChanged;
+    }
+
+    private void HandleDocumentChanged(DocumentChange change)
+    {
+        RefreshHistoryState();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshHistoryState()
+    {
+        _canUndo = PrimitiveService.CanUndo;
+        _canRedo = PrimitiveService.CanRedo;
+    }
+
+    private void Undo() => PrimitiveService.Undo();
+
+    private void Redo() => PrimitiveService.Redo();
+
+    public void Dispose()
+    {
+        PrimitiveService.Changed -= HandleDocumentChanged;
+    }
+}

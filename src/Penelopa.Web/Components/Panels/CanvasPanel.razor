@@ -26,9 +26,12 @@
                   OnPaintSurface="OnPaintSurface"
                   style="width: 100%; height: 100%;" />
         <button type="button"
-                class="penelopa-canvas-fit"
+                class="penelopa-action is-small penelopa-canvas-fit"
                 title="Fit content to viewport"
-                @onclick="FitCanvas">Fit</button>
+                @onclick="FitCanvas">
+            <PenelopaIcon Name="fit" Size="12" />
+            <span>Fit</span>
+        </button>
         <p id="penelopa-canvas-help" class="penelopa-visually-hidden">
             Arrow keys move the selected primitives by 1 unit; hold Shift for 10 units.
             Delete removes the selection. Escape cancels the current gesture.
@@ -39,13 +42,14 @@
         <section class="penelopa-canvas-empty"
                  aria-labelledby="penelopa-canvas-empty-title">
             <div class="penelopa-canvas-empty-card">
+                <PenelopaIcon Name="shapes" Size="24" />
                 <h2 id="penelopa-canvas-empty-title">Start with a sample</h2>
                 <p>
                     Load Loop Study 01, a 9-second media-player demo with 5 tracks and
                     14 keyframes.
                 </p>
                 <button type="button"
-                        class="penelopa-tool-button penelopa-sample-button"
+                        class="penelopa-action is-primary penelopa-sample-button"
                         disabled="@_sampleBusy"
                         @onclick="LoadSampleAsync">@(_sampleBusy ? "Loading…" : "Load Loop Study 01")</button>
                 <p class="penelopa-canvas-empty-hint">
@@ -57,21 +61,27 @@
     @if (_sampleError is not null)
     {
         <div class="penelopa-canvas-notice is-error" role="alert">
+            <PenelopaIcon Name="error" Size="14" />
             <span>@_sampleError</span>
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-icon-button"
                     aria-label="Dismiss sample error"
-                    @onclick="DismissSampleMessage">&#215;</button>
+                    @onclick="DismissSampleMessage">
+                <PenelopaIcon Name="close" Size="12" />
+            </button>
         </div>
     }
     @if (_sampleNotice is not null)
     {
         <div class="penelopa-canvas-notice" role="status">
+            <PenelopaIcon Name="check" Size="14" />
             <span>@_sampleNotice</span>
             <button type="button"
-                    class="penelopa-tool-button"
+                    class="penelopa-icon-button"
                     aria-label="Dismiss sample hint"
-                    @onclick="DismissSampleMessage">&#215;</button>
+                    @onclick="DismissSampleMessage">
+                <PenelopaIcon Name="close" Size="12" />
+            </button>
         </div>
     }
 </div>
