@@ -23,7 +23,7 @@ async function seedLargeDocument(
       const posY = Math.floor(index / 25) * 20;
       primitives.push({
         Id: id,
-        Type: 'Rectangle',
+        Type: 'penelopa.rect',
         Props: {
           Name: `Rect ${index}`,
           PosX: posX,
@@ -54,7 +54,9 @@ async function seedLargeDocument(
     }
 
     localStorage.setItem('penelopa.document', JSON.stringify({
-      Version: 2,
+      Version: 3,
+      DocumentId: '10000000-0000-0000-0000-000000000003',
+      Revision: 0,
       Primitives: primitives,
       SelectionIds: [],
       Simulation: {

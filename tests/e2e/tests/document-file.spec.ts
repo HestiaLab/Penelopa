@@ -110,7 +110,7 @@ test('import file confirms, replaces in memory, and does not write localStorage'
   await expectSimulationClean(page, errors);
 });
 
-test('export downloads a reusable v2 file without writing localStorage', async ({ page }) => {
+test('export downloads a reusable v3 file without writing localStorage', async ({ page }) => {
   const errors = collectSimulationErrors(page);
   await loadSample(page);
 
@@ -124,10 +124,12 @@ test('export downloads a reusable v2 file without writing localStorage', async (
   const json = fs.readFileSync(downloadedPath!, 'utf8');
   const document = JSON.parse(json) as {
     Version: number;
+    DocumentId: string;
     Primitives: unknown[];
     Simulation: { Loop: boolean; Tracks: unknown[] };
   };
-  expect(document.Version).toBe(2);
+  expect(document.Version).toBe(3);
+  expect(document.DocumentId).toMatch(/^[0-9a-f-]{36}$/i);
   expect(document.Primitives).toHaveLength(13);
   expect(document.Simulation.Loop).toBe(true);
   expect(document.Simulation.Tracks).toHaveLength(5);
@@ -337,14 +339,16 @@ test('a version 1 saved document is rejected without changing the editor or stor
   await expectSimulationClean(page, errors);
 });
 
-test('a version 2 saved document loads through the confirmation', async ({ page }) => {
+test('a version 3 saved document loads through the confirmation', async ({ page }) => {
   const errors = collectSimulationErrors(page);
   const saved = JSON.stringify({
-    Version: 2,
+    Version: 3,
+    DocumentId: '10000000-0000-0000-0000-000000000005',
+    Revision: 2,
     Primitives: [
       {
         Id: '00000000-0000-0000-0000-000000000001',
-        Type: 'Rectangle',
+        Type: 'penelopa.rect',
         Props: { Name: 'Saved' },
       },
     ],
@@ -459,7 +463,7 @@ test('dropping a document while Tools is active keeps Tools open', async ({ page
   await expect(page.getByRole('button', { name: 'Replace document', exact: true }))
     .toBeVisible();
   await expect(page.getByRole('tab', { name: 'Tools', exact: true }))
-    .toHaveAttribute('aria-selected', '');
+    .toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.penelopa-tools')).toBeVisible();
   await expectSimulationClean(page, errors);
 });
@@ -552,7 +556,7 @@ test('the import control is reachable by its visible label and focuses the confi
   await expectSimulationClean(page, errors);
 });
 
-test('an empty editor exports a valid version 2 document', async ({ page }) => {
+test('an empty editor exports a valid version 3 document', async ({ page }) => {
   const errors = collectSimulationErrors(page);
   await page.goto('/');
 
@@ -563,15 +567,289 @@ test('an empty editor exports a valid version 2 document', async ({ page }) => {
   expect(downloadedPath).not.toBeNull();
   const document = JSON.parse(fs.readFileSync(downloadedPath!, 'utf8')) as {
     Version: number;
+    DocumentId: string;
+    Revision: number;
     Primitives: unknown[];
     SelectionIds: unknown[];
     Simulation: { Tracks: unknown[] };
   };
-  expect(document.Version).toBe(2);
+  expect(document.Version).toBe(3);
+  expect(document.DocumentId).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(document.Revision).toBeGreaterThanOrEqual(0);
   expect(document.Primitives).toHaveLength(0);
   expect(document.SelectionIds).toHaveLength(0);
   expect(document.Simulation.Tracks).toHaveLength(0);
   expect(await page.evaluate(() => localStorage.getItem('penelopa.document')))
     .toBeNull();
   await expectSimulationClean(page, errors);
+});
+
+test('autosaved journal offers recovery after reload and does not restore history', async ({ page }) => {
+  const errors = collectSimulationErrors(page);
+  await loadSample(page);
+
+  await expect.poll(async () => page.evaluate(async () => {
+    const result = await (window as unknown as {
+      penelopa: { readJournal(): Promise<{ value: { revision: number } | null }> };
+    }).penelopa.readJournal();
+    return result.value?.revision ?? -1;
+  })).toBeGreaterThanOrEqual(0);
+
+  await page.reload();
+  await expect(page.getByTestId('recovery-banner')).toBeVisible();
+  await page.getByTestId('recovery-recover').click();
+  await expect(page.getByTestId('recovery-banner')).toHaveCount(0);
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText(
+    '19 primitives');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('5 tracks');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 selected');
+  await expect(page.getByRole('button', { name: 'Undo document change' }))
+    .toBeDisabled();
+  await expectSimulationClean(page, errors);
+});
+
+test('explicit save clears the journal baseline so reload does not offer recovery', async ({ page }) => {
+  const errors = collectSimulationErrors(page);
+  await loadSample(page);
+  await expect.poll(async () => page.evaluate(async () => {
+    const result = await (window as unknown as {
+      penelopa: { readJournal(): Promise<{ value: { revision: number } | null }> };
+    }).penelopa.readJournal();
+    return result.value?.revision ?? -1;
+  })).toBeGreaterThanOrEqual(0);
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Document saved.')).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId('recovery-banner')).toHaveCount(0);
+  await expectSimulationClean(page, errors);
+});
+
+test('discarding a recovery journal leaves the empty document and clears autosave', async ({ page }) => {
+  const errors = collectSimulationErrors(page);
+  await loadSample(page);
+  await expect.poll(async () => page.evaluate(async () => {
+    const result = await (window as unknown as {
+      penelopa: { readJournal(): Promise<{ value: { revision: number } | null }> };
+    }).penelopa.readJournal();
+    return result.value?.revision ?? -1;
+  })).toBeGreaterThanOrEqual(0);
+
+  await page.reload();
+  await page.getByTestId('recovery-discard').click();
+  await expect(page.getByTestId('recovery-banner')).toHaveCount(0);
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('0 primitives');
+  const journal = await page.evaluate(async () => (window as unknown as {
+    penelopa: { readJournal(): Promise<{ value: unknown }> };
+  }).penelopa.readJournal());
+  expect(journal.value).toBeNull();
+  await expectSimulationClean(page, errors);
+});
+
+test('multiple documents keep independent content, history, and storage identity', async ({ page }) => {
+  const errors = collectSimulationErrors(page);
+  await page.goto('/');
+  await expect(page.getByRole('tab', { name: 'Document 1', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('0 primitives');
+
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 primitive');
+
+  await page.getByRole('tab', { name: 'Document 1', exact: true }).click();
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 primitive');
+  await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
+  await expect(page.locator('.penelopa-tree-item')).toContainText('Circle');
+  await expect(page.locator('.penelopa-tree-item')).not.toContainText('Rectangle');
+
+  await page.getByRole('tab', { name: 'Document 2', exact: true }).click();
+  await expect(page.locator('.penelopa-tree-item')).toContainText('Rectangle');
+
+  await page.getByRole('tab', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Document saved.')).toBeVisible();
+  const keys = await page.evaluate(() => Object.keys(localStorage));
+  expect(keys).toContain('penelopa.activeSession');
+  expect(keys.some(key => key.startsWith('penelopa.document.'))).toBe(true);
+
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Document 1', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 primitive');
+  await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
+  await expect(page.locator('.penelopa-tree-item')).toContainText('Rectangle');
+
+  await page.getByRole('tab', { name: 'Document 1', exact: true }).click();
+  await expect(page.getByTestId('recovery-banner')).toBeVisible();
+  await page.getByTestId('recovery-recover').click();
+  await expect(page.locator('.penelopa-tree-item')).toContainText('Circle');
+
+  await page.getByRole('button', { name: 'Close Document 2', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true })).toHaveCount(0);
+  await page.getByTestId('document-library').locator('summary').click();
+  await page.getByRole('menuitem', { name: /Document 2/ }).click();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 primitive');
+  await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
+  await expect(page.locator('.penelopa-tree-item')).toContainText('Rectangle');
+  await expectSimulationClean(page, errors);
+});
+
+test('document sessions are limited to three and closing discards one tab', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'New document', exact: true }))
+    .toBeDisabled();
+
+  await page.getByRole('button', { name: 'Close Document 3', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Document 3', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Document 1', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true })).toHaveCount(1);
+
+  await page.getByTestId('document-library').locator('summary').click();
+  const emptyEntry = page.getByRole('menuitem', { name: /Document 3/ });
+  await expect(emptyEntry).toContainText('empty');
+  await emptyEntry.click();
+  await expect(page.getByRole('tab', { name: 'Document 3', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+});
+
+test('the last remaining document restores its saved content after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Document saved.')).toBeVisible();
+  await page.getByRole('button', { name: 'Close Document 1', exact: true }).click();
+  await expect(page.getByTestId('document-close-confirm')).toBeVisible();
+  await page.getByRole('button', { name: 'Close anyway', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true })).toBeVisible();
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 primitive');
+  await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
+  await expect(page.locator('.penelopa-tree-list')).toContainText('Rectangle');
+  await expect(page.getByTestId('recovery-banner')).toHaveCount(0);
+});
+
+test('a pending Load is canceled when the active document changes', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Document saved.')).toBeVisible();
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+
+  await page.getByRole('tab', { name: 'Document 1', exact: true }).click();
+  await page.getByRole('button', { name: 'Load', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Replace', exact: true })).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Document 2', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Replace', exact: true })).toHaveCount(0);
+  await expect(page.locator('.penelopa-tool-message')).toContainText(
+    'active document changed');
+  await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
+  await expect(page.locator('.penelopa-tree-list')).toContainText('Rectangle');
+});
+
+test('a pending recovery survives switching documents and keeps its journal', async ({ page }) => {
+  await loadSample(page);
+  await expect.poll(async () => page.evaluate(async () => {
+    const result = await (window as unknown as {
+      penelopa: { readJournal(): Promise<{ value: { revision: number } | null }> };
+    }).penelopa.readJournal();
+    return result.value?.revision ?? -1;
+  })).toBeGreaterThanOrEqual(0);
+
+  await page.reload();
+  await expect(page.getByTestId('recovery-banner')).toBeVisible();
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('recovery-banner')).toHaveCount(0);
+
+  await page.getByRole('tab', { name: 'Document 1', exact: true }).click();
+  await expect(page.getByTestId('recovery-banner')).toBeVisible();
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.waitForTimeout(2_000);
+
+  const roots = await page.evaluate(async () => {
+    const result = await (window as unknown as {
+      penelopa: {
+        readJournal(key: string): Promise<{
+          value: { json: string } | null;
+        }>;
+      };
+    }).penelopa.readJournal('penelopa.document');
+    return result.value ? JSON.parse(result.value.json).Primitives.length : -1;
+  });
+  expect(roots).toBe(13);
+});
+
+test('an imported document can be recovered after reload even when the saved id differs', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Document saved.')).toBeVisible();
+
+  await page.locator('input[type=file]').setInputFiles(samplePath);
+  await page.getByRole('button', { name: 'Replace document', exact: true }).click();
+  await expect(page.locator('.penelopa-import-undo')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId('recovery-banner')).toContainText(
+    'different document');
+  await page.getByTestId('recovery-recover').click();
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('19 primitives');
+});
+
+
+test('closing an unsaved document prompts and keeps it recoverable in the library', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Document 2', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+
+  await page.getByRole('button', { name: 'Close Document 1', exact: true }).click();
+  await expect(page.getByTestId('document-close-confirm')).toBeVisible();
+  await page.getByRole('button', { name: 'Close anyway', exact: true }).click();
+
+  await page.getByTestId('document-library').locator('summary').click();
+  const entry = page.getByRole('menuitem', { name: /Document 1/ });
+  await expect(entry).toContainText('unsaved');
+  await entry.click();
+
+  await expect(page.getByRole('tab', { name: 'Document 1', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 primitive');
+});
+
+test('the default single document restores its saved content after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Document saved.')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Document 1', exact: true }))
+    .toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 primitive');
+  await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
+  await expect(page.locator('.penelopa-tree-list')).toContainText('Circle');
+  await expect(page.getByTestId('recovery-banner')).toHaveCount(0);
 });

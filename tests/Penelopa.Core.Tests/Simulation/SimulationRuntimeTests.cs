@@ -28,7 +28,7 @@ public class SimulationRuntimeTests
     }
 
     [Fact]
-    public void Preview_EvaluatesAndStopRestoresEveryFloatProperty()
+    public void Preview_AppliesOverlayAndLeavesBaseValuesUntouched()
     {
         var (rectangle, config) = CreateSimpleScene();
         var runtime = CreateRuntime(rectangle, config);
@@ -37,7 +37,9 @@ public class SimulationRuntimeTests
         Assert.Empty(issues);
         Assert.Equal(SimulationState.Preview, runtime.State);
         Assert.Equal(0.5d, runtime.CurrentTime);
-        Assert.Equal(55f, rectangle.PosX.Value);
+        Assert.Equal(55f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
+        Assert.Equal(20f, runtime.GetEffectiveValue(rectangle, rectangle.PosY));
+        Assert.Equal(10f, rectangle.PosX.Value);
         Assert.Equal(20f, rectangle.PosY.Value);
         Assert.Equal(
             55f,
@@ -51,6 +53,7 @@ public class SimulationRuntimeTests
         Assert.Equal(20f, rectangle.PosY.Value);
         Assert.Equal(30f, rectangle.Width.Value);
         Assert.Equal(40f, rectangle.Height.Value);
+        Assert.Equal(0, runtime.Overlay.Count);
     }
 
     [Fact]
@@ -63,7 +66,8 @@ public class SimulationRuntimeTests
         var runtime = CreateRuntime(rectangle, config);
 
         Assert.True(runtime.TryEnterPreview(0d, out _));
-        Assert.Equal(50f, rectangle.PosX.Value);
+        Assert.Equal(50f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
+        Assert.Equal(10f, rectangle.PosX.Value);
 
         runtime.Stop();
         Assert.Equal(10f, rectangle.PosX.Value);
@@ -81,16 +85,16 @@ public class SimulationRuntimeTests
 
         runtime.Advance(100.25d);
         Assert.Equal(0.25d, runtime.CurrentTime, 9);
-        Assert.Equal(32.5f, rectangle.PosX.Value);
+        Assert.Equal(32.5f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         runtime.Advance(101d);
         Assert.Equal(SimulationState.Finished, runtime.State);
         Assert.Equal(1d, runtime.CurrentTime);
-        Assert.Equal(100f, rectangle.PosX.Value);
+        Assert.Equal(100f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         runtime.Advance(102d);
         Assert.Equal(SimulationState.Finished, runtime.State);
-        Assert.Equal(100f, rectangle.PosX.Value);
+        Assert.Equal(100f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         runtime.Pause(103d);
         Assert.Equal(SimulationState.Finished, runtime.State);
@@ -110,18 +114,18 @@ public class SimulationRuntimeTests
         runtime.Pause(0.4d);
 
         Assert.Equal(SimulationState.Paused, runtime.State);
-        Assert.Equal(46d, rectangle.PosX.Value, 4);
+        Assert.Equal(46d, runtime.GetEffectiveValue(rectangle, rectangle.PosX), 4);
 
         runtime.Advance(0.9d);
-        Assert.Equal(46d, rectangle.PosX.Value, 4);
+        Assert.Equal(46d, runtime.GetEffectiveValue(rectangle, rectangle.PosX), 4);
 
         Assert.True(runtime.TryPlay(10d, out _));
         runtime.Advance(10.1d);
-        Assert.Equal(55d, rectangle.PosX.Value, 4);
+        Assert.Equal(55d, runtime.GetEffectiveValue(rectangle, rectangle.PosX), 4);
 
         runtime.Pause(10.5d);
         Assert.Equal(SimulationState.Paused, runtime.State);
-        Assert.Equal(91d, rectangle.PosX.Value, 4);
+        Assert.Equal(91d, runtime.GetEffectiveValue(rectangle, rectangle.PosX), 4);
 
         runtime.Stop();
         Assert.Equal(10f, rectangle.PosX.Value);
@@ -136,19 +140,19 @@ public class SimulationRuntimeTests
         Assert.True(runtime.TryStep(0.5d, out _));
         Assert.Equal(SimulationState.Preview, runtime.State);
         Assert.Equal(0.5d, runtime.CurrentTime);
-        Assert.Equal(55f, rectangle.PosX.Value);
+        Assert.Equal(55f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         Assert.True(runtime.TryStep(-1d, out _));
         Assert.Equal(0d, runtime.CurrentTime);
-        Assert.Equal(10f, rectangle.PosX.Value);
+        Assert.Equal(10f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         Assert.True(runtime.TryStep(2d, out _));
         Assert.Equal(1d, runtime.CurrentTime);
-        Assert.Equal(100f, rectangle.PosX.Value);
+        Assert.Equal(100f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         Assert.True(runtime.TrySeek(-1d, out _));
         Assert.Equal(0d, runtime.CurrentTime);
-        Assert.Equal(10f, rectangle.PosX.Value);
+        Assert.Equal(10f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
     }
 
     [Fact]
@@ -177,15 +181,15 @@ public class SimulationRuntimeTests
 
         Assert.True(runtime.TryPlay(0d, out _));
         runtime.Advance(0.75d);
-        Assert.Equal(77.5f, rectangle.PosX.Value);
+        Assert.Equal(77.5f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
         Assert.Equal(SimulationState.Playing, runtime.State);
 
         runtime.Advance(1.25d);
-        Assert.Equal(32.5f, rectangle.PosX.Value);
+        Assert.Equal(32.5f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
         Assert.Equal(SimulationState.Playing, runtime.State);
 
         runtime.Advance(100.5d);
-        Assert.Equal(55f, rectangle.PosX.Value);
+        Assert.Equal(55f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
         Assert.Equal(SimulationState.Playing, runtime.State);
         Assert.True(runtime.CreateReadout().Loop);
 
@@ -205,7 +209,7 @@ public class SimulationRuntimeTests
 
         Assert.True(runtime.TrySeek(0.25d, out _));
         Assert.Equal(SimulationState.Paused, runtime.State);
-        Assert.Equal(32.5f, rectangle.PosX.Value);
+        Assert.Equal(32.5f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         Assert.True(runtime.TrySeek(1d, out _));
         Assert.Equal(SimulationState.Finished, runtime.State);
@@ -213,7 +217,7 @@ public class SimulationRuntimeTests
         Assert.True(runtime.TryPlay(2d, out _));
         Assert.Equal(SimulationState.Playing, runtime.State);
         Assert.Equal(0d, runtime.CurrentTime);
-        Assert.Equal(10f, rectangle.PosX.Value);
+        Assert.Equal(10f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
     }
 
     [Fact]
@@ -226,7 +230,7 @@ public class SimulationRuntimeTests
         var runtime = CreateRuntime(rectangle, initial);
 
         Assert.True(runtime.TryEnterPreview(1.5d, out _));
-        Assert.Equal(77.5f, rectangle.PosX.Value);
+        Assert.Equal(77.5f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         var updated = Config(
             false,
@@ -235,7 +239,7 @@ public class SimulationRuntimeTests
         Assert.Empty(issues);
         Assert.Equal(SimulationState.Preview, runtime.State);
         Assert.Equal(1d, runtime.CurrentTime);
-        Assert.Equal(20f, rectangle.PosX.Value);
+        Assert.Equal(20f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
     }
 
     [Fact]
@@ -245,7 +249,7 @@ public class SimulationRuntimeTests
         var runtime = CreateRuntime(rectangle, config);
 
         Assert.True(runtime.TryEnterPreview(0.5d, out _));
-        Assert.Equal(55f, rectangle.PosX.Value);
+        Assert.Equal(55f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
 
         Assert.True(runtime.TryUpdateConfig(SimulationConfig.Empty, out _));
         Assert.Equal(SimulationState.Ready, runtime.State);
@@ -281,7 +285,7 @@ public class SimulationRuntimeTests
         Assert.False(runtime.TryUpdateConfig(invalid, out var invalidIssues));
         Assert.Contains(invalidIssues, issue => issue.Kind == SimulationIssueKind.Value);
         Assert.Equal(SimulationState.Preview, runtime.State);
-        Assert.Equal(55f, rectangle.PosX.Value);
+        Assert.Equal(55f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
     }
 
     [Fact]
@@ -299,7 +303,7 @@ public class SimulationRuntimeTests
         Assert.True(runtime.TryUpdateConfig(longer, out _));
         Assert.Equal(SimulationState.Paused, runtime.State);
         Assert.Equal(1d, runtime.CurrentTime);
-        Assert.Equal(100f, rectangle.PosX.Value);
+        Assert.Equal(100f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
     }
 
     [Fact]
@@ -330,7 +334,7 @@ public class SimulationRuntimeTests
         Assert.True(runtime.CanPlay);
         Assert.True(runtime.TryPlay(0d, out _));
         runtime.Advance(0.5d);
-        Assert.Equal(55f, rectangle.PosX.Value);
+        Assert.Equal(55f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
         Assert.Single(runtime.CreateReadout().TrackValues);
 
         runtime.Stop();
@@ -411,14 +415,14 @@ public class SimulationRuntimeTests
         Assert.True(runtime.CreateReadout().Loop);
 
         Assert.True(runtime.TryEnterPreview(0.5d, out _));
-        rectangle.PosX.Value = 999f;
         runtime.ReapplyCurrentFrame();
-        Assert.Equal(55f, rectangle.PosX.Value);
+        Assert.Equal(55f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
+        Assert.Equal(10f, rectangle.PosX.Value);
 
         runtime.Stop();
         Assert.Equal(10f, rectangle.PosX.Value);
         runtime.ReapplyCurrentFrame();
-        Assert.Equal(10f, rectangle.PosX.Value);
+        Assert.Equal(10f, runtime.GetEffectiveValue(rectangle, rectangle.PosX));
     }
 
     [Fact]

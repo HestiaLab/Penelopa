@@ -6,7 +6,7 @@ namespace Penelopa.Core.Primitives;
 /// <summary>附加在图元上的命名属性值。</summary>
 public abstract class PropValue
 {
-    public string Name { get; set; }
+    public string Name { get; }
 
     protected PropValue(string name)
     {
@@ -21,7 +21,7 @@ public abstract class PropValue
     }
 
     /// <summary>解析并校验文本；只有成功时才写入值。属性面板与命令边界使用。</summary>
-    public virtual bool TrySetText(string text, out string? error)
+    internal virtual bool TrySetText(string text, out string? error)
     {
         error = $"Property '{Name}' cannot be edited.";
         return false;
@@ -32,75 +32,68 @@ public abstract class PropValue
     /// 未知的 <see cref="PropValue"/> 子类型会抛出 <see cref="NotSupportedException"/>，
     /// 而不是让历史/序列化静默丢弃该属性。
     /// </summary>
-    public object? GetBoxedValue() => this switch
+    public object? GetBoxedValue()
     {
-        FloatPropValue fp => fp.Value,
-        DoublePropValue dp => dp.Value,
-        IntPropValue ip => ip.Value,
-        BoolPropValue bp => bp.Value,
-        StringPropValue sp => sp.Value,
-        UintPropValue up => up.Value,
-        ColorPropValue cp => cp.Value,
-        _ => throw UnsupportedType(),
-    };
+        if (!PropValueRegistry.Default.TryGet(GetType(), out var handler))
+        {
+            throw UnsupportedType();
+        }
+
+        return handler.Get(this);
+    }
 
     /// <summary>
     /// 从装箱值设置属性。JSON 回读的值是 <see cref="JsonElement"/>，
     /// 因此同时接受 JsonElement 和普通装箱值（来自历史快照）。
     /// 未知的 <see cref="PropValue"/> 子类型会抛出 <see cref="NotSupportedException"/>。
     /// </summary>
-    public void SetBoxedValue(object value)
+    internal void SetBoxedValue(object value)
     {
-        switch (this)
+        if (!PropValueRegistry.Default.TryGet(GetType(), out var handler))
         {
-            case FloatPropValue fp: fp.Value = ToSingle(value); break;
-            case DoublePropValue dp: dp.Value = ToDouble(value); break;
-            case IntPropValue ip: ip.Value = ToInt32(value); break;
-            case BoolPropValue bp: bp.Value = ToBoolean(value); break;
-            case StringPropValue sp: sp.Value = ToText(value); break;
-            case UintPropValue up: up.Value = ToUInt32(value); break;
-            case ColorPropValue cp: cp.Value = ToUInt32(value); break;
-            default: throw UnsupportedType();
+            throw UnsupportedType();
         }
+
+        handler.Set(this, value);
     }
 
     private NotSupportedException UnsupportedType()
         => new($"PropValue type '{GetType().Name}' is not supported. Register a conversion before using it in history or serialization.");
 
-    private static float ToSingle(object value)
+    internal static float ToSingle(object value)
         => value is JsonElement element ? element.GetSingle() : Convert.ToSingle(value);
 
-    private static double ToDouble(object value)
+    internal static double ToDouble(object value)
         => value is JsonElement element ? element.GetDouble() : Convert.ToDouble(value);
 
-    private static int ToInt32(object value)
+    internal static int ToInt32(object value)
         => value is JsonElement element ? element.GetInt32() : Convert.ToInt32(value);
 
-    private static bool ToBoolean(object value)
+    internal static bool ToBoolean(object value)
         => value is JsonElement element ? element.GetBoolean() : Convert.ToBoolean(value);
 
-    private static string ToText(object value)
+    internal static string ToText(object value)
         => value is JsonElement element ? element.GetString() ?? string.Empty : Convert.ToString(value) ?? string.Empty;
 
-    private static uint ToUInt32(object value)
+    internal static uint ToUInt32(object value)
         => value is JsonElement element ? element.GetUInt32() : Convert.ToUInt32(value);
 }
 
 public interface IPropValue<T>
 {
-    T Value { get; set; }
+    T Value { get; }
 }
 
 public class IntPropValue : PropValue, IPropValue<int>
 {
-    public int Value { get; set; }
+    public int Value { get; internal set; }
 
     public IntPropValue(string name, int value) : base(name)
     {
         Value = value;
     }
 
-    public override bool TrySetText(string text, out string? error)
+    internal override bool TrySetText(string text, out string? error)
     {
         if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
         {
@@ -120,7 +113,7 @@ public class FloatPropValue : PropValue, IPropValue<float>
     private readonly float? _minimum;
     private readonly float? _maximum;
 
-    public float Value { get; set; }
+    public float Value { get; internal set; }
 
     public FloatPropValue(string name, float value) : base(name)
     {
@@ -145,7 +138,7 @@ public class FloatPropValue : PropValue, IPropValue<float>
     /// <summary>校验候选值而不写入；仿真关键帧等非属性面板路径使用。</summary>
     public bool ValidateValue(float value, out string? error) => Validate(value, out error);
 
-    public override bool TrySetText(string text, out string? error)
+    internal override bool TrySetText(string text, out string? error)
     {
         if (!float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
         {
@@ -200,7 +193,7 @@ public class FloatPropValue : PropValue, IPropValue<float>
 
 public class DoublePropValue : PropValue, IPropValue<double>
 {
-    public double Value { get; set; }
+    public double Value { get; internal set; }
 
     public DoublePropValue(string name, double value) : base(name)
     {
@@ -210,7 +203,7 @@ public class DoublePropValue : PropValue, IPropValue<double>
     public override bool IsValidValue(out string? error)
         => NumericValidation.IsFinite(Value, out error) && NumericValidation.WithinMagnitude(Value, out error);
 
-    public override bool TrySetText(string text, out string? error)
+    internal override bool TrySetText(string text, out string? error)
     {
         if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
         {
@@ -230,14 +223,14 @@ public class DoublePropValue : PropValue, IPropValue<double>
 
 public class BoolPropValue : PropValue, IPropValue<bool>
 {
-    public bool Value { get; set; }
+    public bool Value { get; internal set; }
 
     public BoolPropValue(string name, bool value) : base(name)
     {
         Value = value;
     }
 
-    public override bool TrySetText(string text, out string? error)
+    internal override bool TrySetText(string text, out string? error)
     {
         if (!bool.TryParse(text, out var value))
         {
@@ -256,7 +249,7 @@ public class StringPropValue : PropValue, IPropValue<string>
     private readonly bool _allowEmpty;
     private readonly bool _trim;
 
-    public string Value { get; set; }
+    public string Value { get; internal set; }
 
     /// <summary>允许的最大字符数；属性编辑器据此设置 maxlength。</summary>
     public int MaxLength { get; }
@@ -288,7 +281,7 @@ public class StringPropValue : PropValue, IPropValue<string>
 
     public override bool IsValidValue(out string? error) => Validate(Value, out error);
 
-    public override bool TrySetText(string text, out string? error)
+    internal override bool TrySetText(string text, out string? error)
     {
         var candidate = text ?? string.Empty;
         if (_trim)
@@ -326,14 +319,14 @@ public class StringPropValue : PropValue, IPropValue<string>
 
 public class UintPropValue : PropValue, IPropValue<uint>
 {
-    public uint Value { get; set; }
+    public uint Value { get; internal set; }
 
     public UintPropValue(string name, uint value) : base(name)
     {
         Value = value;
     }
 
-    public override bool TrySetText(string text, out string? error)
+    internal override bool TrySetText(string text, out string? error)
     {
         if (!uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
         {
@@ -353,7 +346,7 @@ public class UintPropValue : PropValue, IPropValue<uint>
 /// </summary>
 public class ColorPropValue : PropValue, IPropValue<uint>
 {
-    public uint Value { get; set; }
+    public uint Value { get; internal set; }
 
     public ColorPropValue(string name, uint value) : base(name)
     {
@@ -368,7 +361,7 @@ public class ColorPropValue : PropValue, IPropValue<uint>
     /// <summary>规范化为 #RRGGBBAA，供属性面板显示与提交。</summary>
     public string ToHex() => $"#{R:X2}{G:X2}{B:X2}{A:X2}";
 
-    public override bool TrySetText(string text, out string? error)
+    internal override bool TrySetText(string text, out string? error)
     {
         var candidate = (text ?? string.Empty).Trim();
         if (candidate.StartsWith('#'))

@@ -32,9 +32,10 @@ public interface IEditorInteractionHost
     void PanByCss(float deltaX, float deltaY);
 
     /// <summary>
-    /// 通知宿主即将开始修改手势（拖拽/缩放），以便在首次几何变更前打开事务快照。每个手势仅触发一次。
+    /// 通知宿主即将开始修改手势（拖拽/缩放），以便在首次几何变更前打开事务并记录属性。
+    /// 每个手势仅触发一次；<paramref name="label"/> 用作撤销条目标签。
     /// </summary>
-    void BeginMutation();
+    void BeginMutation(string label);
 
     /// <summary>提交修改手势，生成一个撤销条目。</summary>
     void CommitMutation();

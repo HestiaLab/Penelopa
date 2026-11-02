@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Penelopa.Core.Alignment;
 using Penelopa.Core.Services;
+using Penelopa.Core.Simulation;
 
 namespace Penelopa.Core.Primitives;
 
@@ -54,14 +55,17 @@ public abstract class Primitive : IAlignable
 
     /// <summary>世界空间轴对齐包围盒。</summary>
     /// <remarks>叶子图元返回局部包围盒，基类通过父容器链映射到世界空间。</remarks>
-    public Box GetWorldBoundingBox()
+    public Box GetWorldBoundingBox() => GetWorldBoundingBox(null);
+
+    /// <summary>使用生效值源计算世界包围盒（仿真 Fit/只读渲染使用）。</summary>
+    public Box GetWorldBoundingBox(IEffectiveValueSource? values)
     {
-        var box = GetLocalBoundingBox();
+        var box = GetLocalBoundingBox(values);
         for (var node = Parent; node is not null; node = node.Parent)
         {
             if (node is Container container)
             {
-                box = container.TransformBoundsToParent(box);
+                box = container.TransformBoundsToParent(box, values);
             }
         }
 
@@ -69,15 +73,23 @@ public abstract class Primitive : IAlignable
     }
 
     /// <summary>图元在自身（父相对）空间中的包围盒。</summary>
-    protected abstract Box GetLocalBoundingBox();
+    protected abstract Box GetLocalBoundingBox(IEffectiveValueSource? values);
 
     /// <summary>内部桥接：供容器查询子图元的局部包围盒。</summary>
-    internal Box GetParentLocalBoundingBox() => GetLocalBoundingBox();
+    internal Box GetParentLocalBoundingBox(IEffectiveValueSource? values)
+        => GetLocalBoundingBox(values);
+
+    /// <summary>内部桥接：按基础值查询子图元局部包围盒。</summary>
+    internal Box GetParentLocalBoundingBox() => GetLocalBoundingBox(null);
+
+    /// <summary>读取 Float 属性的生效值；无 overlay 时返回基础值。</summary>
+    protected float Effective(IEffectiveValueSource? values, FloatPropValue property)
+        => values?.GetFloat(property, property.Value) ?? property.Value;
 
     /// <summary>
     /// 按世界空间增量平移图元。容器内的子图元通过父链转换增量，确保在旋转容器内移动也跟随指针。
     /// </summary>
-    public void Translate(float deltaX, float deltaY)
+    internal void Translate(float deltaX, float deltaY)
     {
         if (Parent is Container container)
         {
@@ -103,7 +115,7 @@ public abstract class Primitive : IAlignable
     /// 世界空间到父级局部空间的转换只在派生类的 <see cref="SetBoundsLocal"/> 调用前发生一次；
     /// 该局部方法只接收和返回父级局部包围盒。
     /// </remarks>
-    public Box SetBounds(Box bounds, Point anchor)
+    internal Box SetBounds(Box bounds, Point anchor)
     {
         if (Parent is Container container)
         {
@@ -122,49 +134,70 @@ public abstract class Primitive : IAlignable
     /// 是否可以按世界轴对齐包围盒精确缩放：自身或任一祖先容器含旋转/剪切时为 false。
     /// 此时世界 AABB 无法用局部轴缩放精确表达，交互层应禁用角柄而不是画出错位的框。
     /// </summary>
-    public bool CanResizeInWorld
-    {
-        get
-        {
-            for (var node = this; node is not null; node = node.Parent)
-            {
-                if (node is Container container && !container.LocalTransform.IsAxisAligned)
-                {
-                    return false;
-                }
-            }
+    public bool CanResizeInWorld => CanResizeInWorldWith(null);
 
-            return true;
+    /// <summary>使用生效值判断是否可以按世界轴对齐包围盒精确缩放。</summary>
+    public bool CanResizeInWorldWith(IEffectiveValueSource? values)
+    {
+        for (var node = this; node is not null; node = node.Parent)
+        {
+            if (node is Container container
+                && !container.GetLocalTransform(values).IsAxisAligned)
+            {
+                return false;
+            }
         }
+
+        return true;
     }
 
     /// <summary>判断给定的世界空间点是否在图元形状内。用于穿透候选收集和框选测试。</summary>
     public bool ContainsWorldPoint(Point point)
+        => ContainsWorldPoint(point, null);
+
+    /// <summary>使用生效值源判断世界空间点是否在图元形状内。</summary>
+    public bool ContainsWorldPoint(Point point, IEffectiveValueSource? values)
     {
         if (this is Container self)
         {
-            return ContainsLocalPoint(self.ToLocalPoint(point));
+            return ContainsLocalPointInternal(self.ToLocalPoint(point, values), values);
         }
 
         if (Parent is Container parent)
         {
-            return ContainsLocalPoint(parent.ToLocalPoint(point));
+            return ContainsLocalPointInternal(parent.ToLocalPoint(point, values), values);
         }
 
-        return ContainsLocalPoint(point);
+        return ContainsLocalPoint(point, values);
     }
 
     /// <summary>在图元局部空间中测试点是否在形状内。</summary>
     protected abstract bool ContainsLocalPoint(Point point);
 
+    /// <summary>使用生效值在图元局部空间中测试点。</summary>
+    protected virtual bool ContainsLocalPoint(
+        Point point,
+        IEffectiveValueSource? values)
+        => ContainsLocalPoint(point);
+
+    internal bool ContainsLocalPointInternal(
+        Point point,
+        IEffectiveValueSource? values)
+        => ContainsLocalPoint(point, values);
+
     /// <summary>内部桥接：供容器测试子图元的局部形状。</summary>
     internal bool ContainsParentLocalPoint(Point point) => ContainsLocalPoint(point);
+
+    internal bool ContainsParentLocalPoint(
+        Point point,
+        IEffectiveValueSource? values)
+        => ContainsLocalPoint(point, values);
 
     /// <inheritdoc/>
     public Point GetWorldPosition() => GetCurrentPosition();
 
     /// <inheritdoc/>
-    public void SetWorldPosition(Point position)
+    internal void SetWorldPosition(Point position)
     {
         var currentPos = GetCurrentPosition();
         Translate(position.X - currentPos.X, position.Y - currentPos.Y);
@@ -199,12 +232,15 @@ public class Circle : Primitive
     public FloatPropValue Radius { get; }
     public ColorPropValue Color { get; }
 
-    protected override Box GetLocalBoundingBox()
+    protected override Box GetLocalBoundingBox(IEffectiveValueSource? values)
     {
-        float left = CenterX.Value - Radius.Value;
-        float top = CenterY.Value - Radius.Value;
-        float right = CenterX.Value + Radius.Value;
-        float bottom = CenterY.Value + Radius.Value;
+        float centerX = Effective(values, CenterX);
+        float centerY = Effective(values, CenterY);
+        float radius = Effective(values, Radius);
+        float left = centerX - radius;
+        float top = centerY - radius;
+        float right = centerX + radius;
+        float bottom = centerY + radius;
         return new Box(left, top, right, bottom);
     }
 
@@ -227,14 +263,20 @@ public class Circle : Primitive
         CenterX.Value = centerX;
         CenterY.Value = centerY;
         Radius.Value = radius;
-        return GetLocalBoundingBox();
+        return GetLocalBoundingBox(null);
     }
 
     protected override bool ContainsLocalPoint(Point point)
+        => ContainsLocalPoint(point, null);
+
+    protected override bool ContainsLocalPoint(
+        Point point,
+        IEffectiveValueSource? values)
     {
-        float dx = point.X - CenterX.Value;
-        float dy = point.Y - CenterY.Value;
-        return dx * dx + dy * dy <= Radius.Value * Radius.Value;
+        float dx = point.X - Effective(values, CenterX);
+        float dy = point.Y - Effective(values, CenterY);
+        float radius = Effective(values, Radius);
+        return dx * dx + dy * dy <= radius * radius;
     }
 }
 
@@ -262,13 +304,13 @@ public class Rectangle : Primitive
     public FloatPropValue Height { get; }
     public ColorPropValue Color { get; }
 
-    protected override Box GetLocalBoundingBox()
+    protected override Box GetLocalBoundingBox(IEffectiveValueSource? values)
     {
-        float left = PosX.Value;
-        float top = PosY.Value;
-        float right = PosX.Value + Width.Value;
-        float bottom = PosY.Value + Height.Value;
-        return new Box(left, top, right, bottom);
+        float posX = Effective(values, PosX);
+        float posY = Effective(values, PosY);
+        float width = Effective(values, Width);
+        float height = Effective(values, Height);
+        return new Box(posX, posY, posX + width, posY + height);
     }
 
     protected override void TranslateLocal(float deltaX, float deltaY)
@@ -287,8 +329,13 @@ public class Rectangle : Primitive
     }
 
     protected override bool ContainsLocalPoint(Point point)
+        => ContainsLocalPoint(point, null);
+
+    protected override bool ContainsLocalPoint(
+        Point point,
+        IEffectiveValueSource? values)
     {
-        var box = GetLocalBoundingBox();
+        var box = GetLocalBoundingBox(values);
         return point.X >= box.MinX && point.X <= box.MaxX
             && point.Y >= box.MinY && point.Y <= box.MaxY;
     }
@@ -324,12 +371,18 @@ public class Triangle : Primitive
     public FloatPropValue Vertex3Y { get; }
     public ColorPropValue Color { get; }
 
-    protected override Box GetLocalBoundingBox()
+    protected override Box GetLocalBoundingBox(IEffectiveValueSource? values)
     {
-        float minX = MathF.Min(Vertex1X.Value, MathF.Min(Vertex2X.Value, Vertex3X.Value));
-        float minY = MathF.Min(Vertex1Y.Value, MathF.Min(Vertex2Y.Value, Vertex3Y.Value));
-        float maxX = MathF.Max(Vertex1X.Value, MathF.Max(Vertex2X.Value, Vertex3X.Value));
-        float maxY = MathF.Max(Vertex1Y.Value, MathF.Max(Vertex2Y.Value, Vertex3Y.Value));
+        float vertex1X = Effective(values, Vertex1X);
+        float vertex1Y = Effective(values, Vertex1Y);
+        float vertex2X = Effective(values, Vertex2X);
+        float vertex2Y = Effective(values, Vertex2Y);
+        float vertex3X = Effective(values, Vertex3X);
+        float vertex3Y = Effective(values, Vertex3Y);
+        float minX = MathF.Min(vertex1X, MathF.Min(vertex2X, vertex3X));
+        float minY = MathF.Min(vertex1Y, MathF.Min(vertex2Y, vertex3Y));
+        float maxX = MathF.Max(vertex1X, MathF.Max(vertex2X, vertex3X));
+        float maxY = MathF.Max(vertex1Y, MathF.Max(vertex2Y, vertex3Y));
         return new Box(minX, minY, maxX, maxY);
     }
 
@@ -343,7 +396,7 @@ public class Triangle : Primitive
     protected override Box SetBoundsLocal(Box bounds, Point anchor)
     {
         // 按顶点在当前局部包围盒中的归一化位置映射，保持形状同时精确填充目标框。锚点隐含在框的角中。
-        var current = GetLocalBoundingBox();
+        var current = GetLocalBoundingBox(null);
         float scaleX = current.Width > 1e-6f ? bounds.Width / current.Width : 0f;
         float scaleY = current.Height > 1e-6f ? bounds.Height / current.Height : 0f;
 
@@ -353,12 +406,17 @@ public class Triangle : Primitive
         Vertex2Y.Value = bounds.MinY + (Vertex2Y.Value - current.MinY) * scaleY;
         Vertex3X.Value = bounds.MinX + (Vertex3X.Value - current.MinX) * scaleX;
         Vertex3Y.Value = bounds.MinY + (Vertex3Y.Value - current.MinY) * scaleY;
-        return GetLocalBoundingBox();
+        return GetLocalBoundingBox(null);
     }
 
     protected override bool ContainsLocalPoint(Point point)
+        => ContainsLocalPoint(point, null);
+
+    protected override bool ContainsLocalPoint(
+        Point point,
+        IEffectiveValueSource? values)
     {
-        var box = GetLocalBoundingBox();
+        var box = GetLocalBoundingBox(values);
         if (box.Width < 1e-6f || box.Height < 1e-6f)
         {
             // 退化（零面积）三角形不可命中
@@ -366,9 +424,18 @@ public class Triangle : Primitive
         }
 
         // 叉积符号测试：三条边测试同号则在内部（或边界上）
-        float d1 = Cross(point, new Point(Vertex1X.Value, Vertex1Y.Value), new Point(Vertex2X.Value, Vertex2Y.Value));
-        float d2 = Cross(point, new Point(Vertex2X.Value, Vertex2Y.Value), new Point(Vertex3X.Value, Vertex3Y.Value));
-        float d3 = Cross(point, new Point(Vertex3X.Value, Vertex3Y.Value), new Point(Vertex1X.Value, Vertex1Y.Value));
+        float d1 = Cross(
+            point,
+            new Point(Effective(values, Vertex1X), Effective(values, Vertex1Y)),
+            new Point(Effective(values, Vertex2X), Effective(values, Vertex2Y)));
+        float d2 = Cross(
+            point,
+            new Point(Effective(values, Vertex2X), Effective(values, Vertex2Y)),
+            new Point(Effective(values, Vertex3X), Effective(values, Vertex3Y)));
+        float d3 = Cross(
+            point,
+            new Point(Effective(values, Vertex3X), Effective(values, Vertex3Y)),
+            new Point(Effective(values, Vertex1X), Effective(values, Vertex1Y)));
         bool hasNegative = d1 < 0f || d2 < 0f || d3 < 0f;
         bool hasPositive = d1 > 0f || d2 > 0f || d3 > 0f;
         return !(hasNegative && hasPositive);

@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using Microsoft.JSInterop;
 using Penelopa.Core.Primitives;
 using Penelopa.Core.Services;
@@ -7,6 +9,12 @@ using Penelopa.Core.Simulation;
 namespace Penelopa.Web.Services;
 
 public sealed record DocumentSaveResult(bool Success, string? Error);
+
+/// <summary>一次成功保存的实际身份；订阅者不得用当前活动会话替代它。</summary>
+public sealed record DocumentSavedEvent(string StorageKey, Guid DocumentId, long Revision);
+
+/// <summary>一次成功读取到的显式保存文档身份，用于会话的“已保存基线”。</summary>
+public sealed record DocumentLoadedEvent(string StorageKey, Guid DocumentId, long Revision);
 
 public sealed record DocumentLoadResult(DeserializeResult? Document, string? Error);
 
@@ -22,13 +30,14 @@ public sealed record StorageWriteResult(
     [property: JsonPropertyName("error")] string? Error);
 
 /// <summary>
-/// 编辑页与仿真页共用的 localStorage 持久化边界：序列化 v2 文档、
+/// 编辑页与仿真页共用的 localStorage 持久化边界：序列化 v3 文档、
 /// 备份上一次负载，并把 JS 异常转换为可显示的结果。
 /// </summary>
 public sealed class DocumentStorage
 {
     public const string StorageKey = "penelopa.document";
     public const string BackupKey = "penelopa.document.backup";
+    public const string ActiveSessionKey = "penelopa.activeSession";
 
     private readonly IJSRuntime _js;
 
@@ -38,18 +47,51 @@ public sealed class DocumentStorage
         _js = js;
     }
 
+    /// <summary>当前活动会话的 localStorage 键；默认会话保持 legacy 键。</summary>
+    public string ActiveStorageKey { get; private set; } = StorageKey;
+
+    public string ActiveBackupKey => ActiveStorageKey + ".backup";
+
+    public void SetActiveKey(string storageKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(storageKey);
+        ActiveStorageKey = storageKey;
+    }
+
     /// <summary>仅在一次完整的 localStorage 写入成功后触发。</summary>
-    public event Action? Saved;
+    public event Action<DocumentSavedEvent>? Saved;
+
+    /// <summary>显式保存文档成功解析后触发；会话据此更新已保存基线。</summary>
+    public event Action<DocumentLoadedEvent>? Loaded;
 
     public async Task<DocumentSaveResult> SaveAsync(
         IReadOnlyList<Primitive> roots,
         IEnumerable<Primitive> selection,
-        SimulationConfig? simulation = null)
+        SimulationConfig? simulation = null,
+        Guid documentId = default,
+        long revision = 0,
+        IReadOnlyDictionary<string, JsonElement>? extensions = null)
     {
+        // 键与载荷必须在同一个同步片段内确定；之后任何 await 期间切换会话都不能改变写入目标。
+        var storageKey = ActiveStorageKey;
+        var backupKey = storageKey + ".backup";
+        var resolvedDocumentId = documentId == Guid.Empty ? Guid.NewGuid() : documentId;
         try
         {
-            var json = DocumentSerializer.Serialize(roots, selection, simulation);
-            var previous = await ReadStorageAsync(StorageKey);
+            var json = DocumentSerializer.Serialize(
+                roots,
+                selection,
+                simulation,
+                resolvedDocumentId,
+                revision,
+                extensions);
+            if (Encoding.UTF8.GetByteCount(json) > DocumentSerializer.MaxDocumentBytes)
+            {
+                return SaveFailure(
+                    $"The document is larger than {DocumentSerializer.MaxDocumentBytes / (1024 * 1024)} MB and cannot be saved.");
+            }
+
+            var previous = await ReadStorageAsync(storageKey);
             if (!previous.Success)
             {
                 return SaveFailure(previous.Error);
@@ -57,20 +99,23 @@ public sealed class DocumentStorage
 
             if (!string.IsNullOrEmpty(previous.Value))
             {
-                var backup = await WriteStorageAsync(BackupKey, previous.Value);
+                var backup = await WriteStorageAsync(backupKey, previous.Value);
                 if (!backup.Success)
                 {
                     return SaveFailure(backup.Error);
                 }
             }
 
-            var write = await WriteStorageAsync(StorageKey, json);
+            var write = await WriteStorageAsync(storageKey, json);
             if (!write.Success)
             {
                 return SaveFailure(write.Error);
             }
 
-            Saved?.Invoke();
+            Saved?.Invoke(new DocumentSavedEvent(
+                storageKey,
+                resolvedDocumentId,
+                revision));
             return new DocumentSaveResult(true, null);
         }
         catch (Exception ex)
@@ -84,9 +129,10 @@ public sealed class DocumentStorage
 
     public async Task<DocumentLoadResult> LoadAsync()
     {
+        var storageKey = ActiveStorageKey;
         try
         {
-            var read = await ReadStorageAsync(StorageKey);
+            var read = await ReadStorageAsync(storageKey);
             if (!read.Success)
             {
                 return new DocumentLoadResult(
@@ -100,15 +146,32 @@ public sealed class DocumentStorage
                 return new DocumentLoadResult(null, "No saved document was found.");
             }
 
-            var result = DocumentSerializer.Deserialize(json, out var rejectedVersion);
+            var result = DocumentSerializer.Deserialize(
+                json,
+                out var rejectedVersion,
+                out var unknownTypeId);
             if (result is null)
             {
+                if (unknownTypeId is not null)
+                {
+                    var display = unknownTypeId.Length <= 120
+                        ? unknownTypeId
+                        : unknownTypeId[..120];
+                    return new DocumentLoadResult(
+                        null,
+                        $"The saved document uses an unknown primitive type '{display}'. It was not loaded.");
+                }
+
                 return new DocumentLoadResult(
                     null,
                     DescribeVersionRejection(rejectedVersion)
                         ?? "The saved document is invalid or unsupported.");
             }
 
+            Loaded?.Invoke(new DocumentLoadedEvent(
+                storageKey,
+                result.DocumentId,
+                result.Revision));
             return new DocumentLoadResult(result, null);
         }
         catch (Exception ex)
@@ -125,9 +188,10 @@ public sealed class DocumentStorage
     {
         return rejectedVersion switch
         {
-            0 => "The saved document has no supported version. Only version 2 documents are supported.",
+            0 => "The saved document has no supported version. Only version 3 documents are supported.",
             1 => "The saved document uses document version 1, which is no longer supported. It was not loaded; export it with an older release before upgrading.",
-            > 2 => $"The saved document uses version {rejectedVersion}, which is newer than this app supports. It was not loaded.",
+            2 => "The saved document uses document version 2, which is no longer supported. It was not loaded; export it with an older release before upgrading.",
+            > 3 => $"The saved document uses version {rejectedVersion}, which is newer than this app supports. It was not loaded.",
             _ => null,
         };
     }

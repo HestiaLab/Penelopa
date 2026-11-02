@@ -8,7 +8,7 @@ using Xunit;
 
 namespace Penelopa.Web.Tests;
 
-public class WorkspaceChromeTests : TestContext
+public class WorkspaceChromeTests : BunitContext
 {
     private readonly PrimitiveService _service;
 
@@ -16,6 +16,7 @@ public class WorkspaceChromeTests : TestContext
     {
         _service = new PrimitiveService();
         Services.AddSingleton<IPrimitiveService>(_service);
+        Services.AddSingleton<DocumentEditor>();
         Services.AddSingleton<SimulationConfigStore>();
     }
 
@@ -24,12 +25,13 @@ public class WorkspaceChromeTests : TestContext
     {
         var rectangle = new Rectangle();
         _service.Add(rectangle);
-        var cut = RenderComponent<PenelopaTopToolbar>();
+        var cut = Render<PenelopaTopToolbar>();
 
         var undo = cut.Find("button[aria-label='Undo document change']");
         var redo = cut.Find("button[aria-label='Redo document change']");
         Assert.False(undo.HasAttribute("disabled"));
         Assert.True(redo.HasAttribute("disabled"));
+        Assert.Equal("Undo Add rectangle (Ctrl+Z)", undo.GetAttribute("title"));
 
         undo.Click();
 
@@ -40,6 +42,9 @@ public class WorkspaceChromeTests : TestContext
                 .HasAttribute("disabled"));
             Assert.False(cut.Find("button[aria-label='Redo document change']")
                 .HasAttribute("disabled"));
+            Assert.Equal(
+                "Redo Add rectangle (Ctrl+Y)",
+                cut.Find("button[aria-label='Redo document change']").GetAttribute("title"));
         });
 
         cut.Find("button[aria-label='Redo document change']").Click();
@@ -67,7 +72,7 @@ public class WorkspaceChromeTests : TestContext
         var store = Services.GetRequiredService<SimulationConfigStore>();
         Assert.True(store.TryAddTrack(child.Id, "PosX", 0d, 10f, out var trackError), trackError);
 
-        var cut = RenderComponent<PenelopaStatusBar>();
+        var cut = Render<PenelopaStatusBar>();
 
         Assert.Equal("polite", cut.Find("footer").GetAttribute("aria-live"));
         Assert.Contains("2 primitives", cut.Markup);

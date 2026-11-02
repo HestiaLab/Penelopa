@@ -2,6 +2,7 @@
 @using Microsoft.JSInterop
 @using Penelopa.Core.Alignment
 @using Penelopa.Core.Primitives
+@using Penelopa.Core.Simulation
 @using Penelopa.Rendering
 @using Penelopa.Web.Components
 @using SkiaSharp
@@ -58,6 +59,10 @@
     /// </summary>
     [Parameter]
     public bool RenderLoopEnabled { get; set; }
+
+    /// <summary>仿真 overlay；播放/预览期间渲染生效值而不修改模型。</summary>
+    [Parameter]
+    public IEffectiveValueSource? EffectiveValues { get; set; }
 
     [Parameter]
     public EventCallback OnFitRequested { get; set; }
@@ -140,7 +145,8 @@
             Roots,
             selection: null,
             renderHitBuffer: false,
-            drawAxes: false);
+            drawAxes: false,
+            effectiveValues: EffectiveValues);
 
         if (_pendingFit)
         {
@@ -155,7 +161,8 @@
                     Roots,
                     selection: null,
                     renderHitBuffer: false,
-                    drawAxes: false);
+                    drawAxes: false,
+                    effectiveValues: EffectiveValues);
             }
         }
     }

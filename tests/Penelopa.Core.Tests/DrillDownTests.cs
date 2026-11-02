@@ -124,7 +124,7 @@ public class DrillDownTests
             PanCalls.Add(new Point(deltaX, deltaY));
         }
 
-        public void BeginMutation()
+        public void BeginMutation(string label)
         {
         }
 

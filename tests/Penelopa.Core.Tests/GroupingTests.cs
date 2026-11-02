@@ -75,7 +75,7 @@ public class GroupingTests
         Assert.Null(first.Parent);
         Assert.Null(second.Parent);
         Assert.Empty(group.Children);
-        Assert.Empty(service.GetSelection());
+        Assert.Equal(new Primitive[] { first, second }, service.GetSelection());
         Assert.False(service.CanUndo);
         Assert.True(service.CanRedo);
 
@@ -85,7 +85,7 @@ public class GroupingTests
         Assert.Equal(new Primitive[] { first, second }, group.Children);
         Assert.Same(group, first.Parent);
         Assert.Same(group, second.Parent);
-        Assert.Empty(service.GetSelection());
+        Assert.Same(group, Assert.Single(service.GetSelection()));
     }
 
     [Fact]
@@ -185,7 +185,7 @@ public class GroupingTests
         Assert.Equal(new Primitive[] { first, second }, group.Children);
         Assert.Same(group, first.Parent);
         Assert.Same(group, second.Parent);
-        Assert.Equal(new Primitive[] { first, second }, service.GetSelection());
+        Assert.Same(group, Assert.Single(service.GetSelection()));
 
         service.Redo();
         Assert.Equal(new Primitive[] { first, second, third }, service.GetAll());

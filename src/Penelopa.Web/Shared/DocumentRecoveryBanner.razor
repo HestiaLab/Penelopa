@@ -1,0 +1,123 @@
+@namespace Penelopa.Web.Shared
+@using Penelopa.Web.Services
+@implements IDisposable
+
+@if (Journal.PendingRecovery is { } recovery)
+{
+    <div class="penelopa-recovery-banner"
+         data-testid="recovery-banner"
+         role="alert">
+        <div class="penelopa-recovery-copy">
+            <strong>Unsaved document found</strong>
+            @if (Journal.PendingDocumentDiffers)
+            {
+                <span>
+                    An autosave from a different document (revision @recovery.Revision,
+                    @FormatSavedAt(Journal.PendingEntry)) is available. Recover replaces the
+                    current document with it; undo history is not restored.
+                </span>
+            }
+            else
+            {
+                <span>
+                    Autosave revision @recovery.Revision from @FormatSavedAt(Journal.PendingEntry)
+                    is newer than the last explicit save. Undo history is not restored.
+                </span>
+            }
+            @if (_error is not null)
+            {
+                <span class="penelopa-recovery-error" role="alert">@_error</span>
+            }
+        </div>
+        <div class="penelopa-recovery-actions">
+            <button type="button"
+                    class="penelopa-action is-primary"
+                    data-testid="recovery-recover"
+                    @onclick="RecoverAsync">
+                Recover
+            </button>
+            <button type="button"
+                    class="penelopa-action"
+                    data-testid="recovery-discard"
+                    @onclick="DiscardAsync">
+                Discard
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private string? _error;
+    private bool _initialized;
+
+    [Inject]
+    private DocumentJournalService Journal { get; set; } = null!;
+
+    [Inject]
+    private DocumentSessionManager Sessions { get; set; } = null!;
+
+    [Inject]
+    private DocumentFileService Files { get; set; } = null!;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Journal.StateChanged += HandleStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized)
+        {
+            return;
+        }
+
+        _initialized = true;
+        await Sessions.InitializeAsync();
+        await Journal.InitializeAsync();
+    }
+
+    private void HandleStateChanged()
+        => _ = InvokeAsync(StateHasChanged);
+
+    private Task RecoverAsync()
+    {
+        _error = null;
+        if (Journal.PendingRecovery is not { } document)
+        {
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            Files.Apply(document);
+            Journal.ResolveRecovery();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Penelopa] Document recovery failed: {ex}");
+            _error = "The recovered document could not be applied.";
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task DiscardAsync()
+    {
+        _error = null;
+        await Journal.DiscardRecoveryAsync();
+    }
+
+    private static string FormatSavedAt(JournalEntryDto? entry)
+    {
+        return entry is not null
+            && DateTimeOffset.TryParse(entry.SavedAt, out var savedAt)
+            ? savedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : "an earlier session";
+    }
+
+    public void Dispose()
+    {
+        Journal.StateChanged -= HandleStateChanged;
+    }
+}

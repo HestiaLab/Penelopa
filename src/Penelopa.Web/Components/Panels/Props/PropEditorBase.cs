@@ -6,7 +6,7 @@ namespace Penelopa.Web.Components.Panels.Props;
 
 /// <summary>
 /// 属性输入组件的共享状态：多选公共属性的冲突显示、稳定 id/ARIA 关联、
-/// 校验错误的字段绑定，以及经由服务的原子批量写入。
+/// 校验错误的字段绑定，以及经 <see cref="DocumentEditor"/> 的原子批量写入。
 /// </summary>
 public abstract class PropEditorBase : ComponentBase
 {
@@ -19,7 +19,7 @@ public abstract class PropEditorBase : ComponentBase
     public PropValue PropValue { get; set; } = null!;
 
     [Inject]
-    protected IPrimitiveService PrimitiveService { get; set; } = null!;
+    protected DocumentEditor DocumentEditor { get; set; } = null!;
 
     protected string Text { get; private set; } = string.Empty;
 
@@ -64,8 +64,10 @@ public abstract class PropEditorBase : ComponentBase
             return true;
         }
 
-        if (PrimitiveService.TrySetProperty(Owners, PropValue.Name, text, out var error))
+        if (DocumentEditor.TrySetProperty(Owners, PropValue.Name, text, out var error))
         {
+            // 失焦/回车提交结束当前合并链；800 ms 合并只作用于同一编辑会话内的连续提交。
+            DocumentEditor.EndCoalescing();
             Error = null;
             RefreshFromOwners();
             return true;

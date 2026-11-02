@@ -258,6 +258,7 @@
     private DeserializeResult? _pendingLoad;
     private DocumentFileLoadResult? _pendingImport;
     private SimulationConfig? _pendingSave;
+    private string? _pendingStorageKey;
     private int _pendingDormantCount;
     private PendingOperation _pendingOperation;
     private bool _isSaving;
@@ -312,6 +313,9 @@
     private IPrimitiveService PrimitiveService { get; set; } = null!;
 
     [Inject]
+    private DocumentEditor DocumentEditor { get; set; } = null!;
+
+    [Inject]
     private SimulationConfigStore SimulationConfigStore { get; set; } = null!;
 
     [Inject]
@@ -322,6 +326,9 @@
 
     [Inject]
     private DocumentImportRollbackService ImportRollback { get; set; } = null!;
+
+    [Inject]
+    private DocumentJournalService DocumentJournal { get; set; } = null!;
 
     [Inject]
     private IJSRuntime JS { get; set; } = null!;
@@ -372,6 +379,23 @@
 
     private void HandleDocumentChanged(DocumentChange change)
     {
+        if (_pendingOperation != PendingOperation.None
+            && !string.Equals(
+                _pendingStorageKey,
+                DocumentStorage.ActiveStorageKey,
+                StringComparison.Ordinal))
+        {
+            ClearPendingOperation();
+            SetDocumentMessage(
+                "The pending document action was canceled because the active document changed.",
+                error: false,
+                warning: true);
+            UpdateSelectionState(change.State.Selection);
+            _groupMessage = null;
+            StateHasChanged();
+            return;
+        }
+
         var contentChanged = (change.Kind
             & (DocumentChangeKind.Structure | DocumentChangeKind.Geometry)) != 0;
         if (contentChanged
@@ -411,6 +435,25 @@
     /// </summary>
     private void HandleSimulationConfigChanged()
     {
+        if (_pendingOperation == PendingOperation.None)
+        {
+            return;
+        }
+
+        if (!string.Equals(
+                _pendingStorageKey,
+                DocumentStorage.ActiveStorageKey,
+                StringComparison.Ordinal))
+        {
+            ClearPendingOperation();
+            SetDocumentMessage(
+                "The pending document action was canceled because the active document changed.",
+                error: false,
+                warning: true);
+            StateHasChanged();
+            return;
+        }
+
         if (_pendingOperation is not (PendingOperation.ImportConfirm or PendingOperation.ExportDormant))
         {
             return;
@@ -436,12 +479,12 @@
 
     private void DeleteSelection()
     {
-        PrimitiveService.RemoveRange(PrimitiveService.GetSelection());
+        DocumentEditor.RemoveRange(PrimitiveService.GetSelection());
     }
 
     private void GroupSelection()
     {
-        _ = PrimitiveService.GroupSelection(out var error);
+        _ = DocumentEditor.GroupSelection(out var error);
         _groupMessage = error;
     }
 
@@ -454,7 +497,7 @@
             return;
         }
 
-        _ = PrimitiveService.TryUngroup(container, out var error);
+        _ = DocumentEditor.TryUngroup(container, out var error);
         _groupMessage = error;
     }
 
@@ -476,17 +519,17 @@
         var container = selection.Count == 1 ? selection[0] as Container : null;
         if (container is not null)
         {
-            PrimitiveService.AddToContainer(container, primitive);
+            DocumentEditor.AddToContainer(container, primitive);
         }
         else
         {
-            PrimitiveService.Add(primitive);
+            DocumentEditor.Add(primitive);
         }
     }
 
     private void AddContainer(Container container)
     {
-        PrimitiveService.Add(container);
+        DocumentEditor.Add(container);
         PrimitiveService.SetSelected(container);
     }
 
@@ -502,7 +545,7 @@
     private void Align(AlignType type)
     {
         // 服务层事务边界统一处理对齐/通知/撤销，已对齐时不产生历史条目
-        PrimitiveService.Align(type);
+        DocumentEditor.Align(type);
     }
 
     private async Task SaveDocument()
@@ -522,6 +565,7 @@
             _pendingSave = active;
             _pendingDormantCount = dormant;
             _pendingOperation = PendingOperation.SaveDormant;
+            _pendingStorageKey = DocumentStorage.ActiveStorageKey;
             SetDocumentMessage(null, error: false);
             return;
         }
@@ -533,6 +577,19 @@
     {
         if (_pendingOperation != PendingOperation.SaveDormant || _isSaving)
         {
+            return;
+        }
+
+        if (!string.Equals(
+                _pendingStorageKey,
+                DocumentStorage.ActiveStorageKey,
+                StringComparison.Ordinal))
+        {
+            ClearPendingOperation();
+            SetDocumentMessage(
+                "Save canceled because the active document changed.",
+                error: false,
+                warning: true);
             return;
         }
 
@@ -576,7 +633,10 @@
             var result = await DocumentStorage.SaveAsync(
                 PrimitiveService.GetAll().ToList(),
                 PrimitiveService.GetSelection().ToList(),
-                active);
+                active,
+                PrimitiveService.DocumentId,
+                PrimitiveService.Revision,
+                PrimitiveService.Extensions);
             if (!result.Success)
             {
                 SetDocumentMessage(
@@ -603,11 +663,24 @@
 
         // 加载开始即取消未确认的 Dormant 保存，禁止旧快照跨文档存活。
         _isLoading = true;
+        var storageKey = DocumentStorage.ActiveStorageKey;
         ClearPendingOperation();
         StateHasChanged();
         try
         {
             var result = await DocumentStorage.LoadAsync();
+            if (!string.Equals(
+                    storageKey,
+                    DocumentStorage.ActiveStorageKey,
+                    StringComparison.Ordinal))
+            {
+                SetDocumentMessage(
+                    "Load canceled because the active document changed.",
+                    error: false,
+                    warning: true);
+                return;
+            }
+
             if (result.Document is null)
             {
                 SetDocumentMessage(
@@ -618,6 +691,7 @@
 
             _pendingLoad = result.Document;
             _pendingOperation = PendingOperation.LoadConfirm;
+            _pendingStorageKey = storageKey;
             SetDocumentMessage(null, error: false);
         }
         finally
@@ -626,7 +700,7 @@
         }
     }
 
-    private void ConfirmLoad()
+    private async Task ConfirmLoad()
     {
         if (_pendingOperation != PendingOperation.LoadConfirm
             || _pendingLoad is null
@@ -635,16 +709,33 @@
             return;
         }
 
+        if (!string.Equals(
+                _pendingStorageKey,
+                DocumentStorage.ActiveStorageKey,
+                StringComparison.Ordinal))
+        {
+            ClearPendingOperation();
+            SetDocumentMessage(
+                "Load canceled because the active document changed.",
+                error: false,
+                warning: true);
+            return;
+        }
+
         var result = _pendingLoad;
+        var targetStorageKey = _pendingStorageKey;
         ClearPendingOperation();
 
-        // Deserialize 已保证 Id 唯一；ResolveSelection 会忽略未知 Id
-        var selected = result.ResolveSelection();
-        PrimitiveService.ReplaceAll(result.Roots);
-        // 即使选区为空也显式通知，属性面板必须清空而非保留旧目标
-        PrimitiveService.SetSelectedRange(selected);
-        SimulationConfigStore.ReplaceConfig(
-            result.Simulation ?? SimulationConfig.Empty);
+        // 恢复身份、选区、扩展段与仿真配置；整体替换并清空统一历史。
+        DocumentFiles.Apply(result);
+        await DocumentJournal.NotifyLocalLoadAsync(result.DocumentId, result.Revision);
+        if (!string.Equals(
+                targetStorageKey,
+                DocumentStorage.ActiveStorageKey,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
 
         if (result.Warnings.Count > 0)
         {
@@ -694,8 +785,21 @@
             }
 
             _isImporting = true;
+            var storageKey = DocumentStorage.ActiveStorageKey;
             StateHasChanged();
             var result = await DocumentFiles.ReadAsync(args.File);
+            if (!string.Equals(
+                    storageKey,
+                    DocumentStorage.ActiveStorageKey,
+                    StringComparison.Ordinal))
+            {
+                SetDocumentMessage(
+                    "Import canceled because the active document changed. Select the file again.",
+                    error: false,
+                    warning: true);
+                return;
+            }
+
             if (!result.Success)
             {
                 SetDocumentMessage(
@@ -706,6 +810,7 @@
 
             _pendingImport = result;
             _pendingOperation = PendingOperation.ImportConfirm;
+            _pendingStorageKey = storageKey;
             _focusImportConfirmation = true;
         }
         catch (Exception ex)
@@ -744,7 +849,7 @@
         }
     }
 
-    private void ConfirmImport()
+    private async Task ConfirmImport()
     {
         if (_pendingOperation != PendingOperation.ImportConfirm
             || _pendingImport?.Document is not { } document
@@ -753,7 +858,21 @@
             return;
         }
 
+        if (!string.Equals(
+                _pendingStorageKey,
+                DocumentStorage.ActiveStorageKey,
+                StringComparison.Ordinal))
+        {
+            ClearPendingOperation();
+            SetDocumentMessage(
+                "Import canceled because the active document changed. Select the file again.",
+                error: false,
+                warning: true);
+            return;
+        }
+
         var pending = _pendingImport;
+        var targetStorageKey = _pendingStorageKey;
         ClearPendingOperation();
         if (!ImportRollback.TryApplyImport(
             pending.FileName,
@@ -761,6 +880,17 @@
             out var error))
         {
             SetDocumentMessage(error ?? "The document could not be imported.", error: true);
+            return;
+        }
+
+        await DocumentJournal.NotifyDocumentReplacedAsync(
+            PrimitiveService.DocumentId,
+            PrimitiveService.Revision);
+        if (!string.Equals(
+                targetStorageKey,
+                DocumentStorage.ActiveStorageKey,
+                StringComparison.Ordinal))
+        {
             return;
         }
 
@@ -792,7 +922,7 @@
         SetDocumentMessage("Import canceled.", error: false);
     }
 
-    private void UndoImport()
+    private async Task UndoImport()
     {
         if (!CanUndoImport)
         {
@@ -801,9 +931,21 @@
 
         try
         {
+            var targetStorageKey = DocumentStorage.ActiveStorageKey;
             if (!ImportRollback.UndoImport())
             {
                 SetDocumentMessage("There is no import to undo.", error: true);
+                return;
+            }
+
+            await DocumentJournal.NotifyDocumentReplacedAsync(
+                PrimitiveService.DocumentId,
+                PrimitiveService.Revision);
+            if (!string.Equals(
+                    targetStorageKey,
+                    DocumentStorage.ActiveStorageKey,
+                    StringComparison.Ordinal))
+            {
                 return;
             }
 
@@ -830,6 +972,7 @@
         {
             _pendingDormantCount = dormant;
             _pendingOperation = PendingOperation.ExportDormant;
+            _pendingStorageKey = DocumentStorage.ActiveStorageKey;
             StateHasChanged();
             return;
         }
@@ -841,6 +984,19 @@
     {
         if (_pendingOperation != PendingOperation.ExportDormant || _isExporting)
         {
+            return;
+        }
+
+        if (!string.Equals(
+                _pendingStorageKey,
+                DocumentStorage.ActiveStorageKey,
+                StringComparison.Ordinal))
+        {
+            ClearPendingOperation();
+            SetDocumentMessage(
+                "Export canceled because the active document changed.",
+                error: false,
+                warning: true);
             return;
         }
 
@@ -914,6 +1070,7 @@
         _pendingLoad = null;
         _pendingImport = null;
         _pendingSave = null;
+        _pendingStorageKey = null;
         _pendingDormantCount = 0;
         _pendingOperation = PendingOperation.None;
     }

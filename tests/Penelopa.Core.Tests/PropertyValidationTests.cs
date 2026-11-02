@@ -120,11 +120,11 @@ public class PropertyValidationTests
     public void LoadDocument_WithEmptyName_IsRejected()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
             {
               ""Id"": ""11111111-1111-1111-1111-111111111111"",
-              ""Type"": ""Circle"",
+              ""Type"": ""penelopa.circle"",
               ""Props"": {
                 ""Name"": ""   "",
                 ""CenterX"": 10,
@@ -169,11 +169,11 @@ public class PropertyValidationTests
     public void LoadDocument_WithNegativeRadius_IsRejected()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
             {
               ""Id"": ""11111111-1111-1111-1111-111111111111"",
-              ""Type"": ""Circle"",
+              ""Type"": ""penelopa.circle"",
               ""Props"": {
                 ""Name"": ""Circle"",
                 ""CenterX"": 10,
@@ -193,11 +193,11 @@ public class PropertyValidationTests
     public void LoadDocument_WithZeroWidth_IsRejected()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
             {
               ""Id"": ""11111111-1111-1111-1111-111111111111"",
-              ""Type"": ""Rectangle"",
+              ""Type"": ""penelopa.rect"",
               ""Props"": {
                 ""Name"": ""Rectangle"",
                 ""PosX"": 0,
@@ -218,11 +218,11 @@ public class PropertyValidationTests
     public void LoadDocument_WithValidValues_IsAccepted()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
             {
               ""Id"": ""11111111-1111-1111-1111-111111111111"",
-              ""Type"": ""Circle"",
+              ""Type"": ""penelopa.circle"",
               ""Props"": {
                 ""Name"": ""Circle"",
                 ""CenterX"": 10,

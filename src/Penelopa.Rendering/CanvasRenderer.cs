@@ -1,6 +1,7 @@
 using Penelopa.Core.Alignment;
 using Penelopa.Core.Interaction;
 using Penelopa.Core.Primitives;
+using Penelopa.Core.Simulation;
 using SkiaSharp;
 
 namespace Penelopa.Rendering;
@@ -48,7 +49,8 @@ public sealed class CanvasRenderer : IDisposable
         IReadOnlyList<Primitive> primitives,
         IReadOnlyList<Primitive>? selection = null,
         bool renderHitBuffer = true,
-        bool drawAxes = true)
+        bool drawAxes = true,
+        IEffectiveValueSource? effectiveValues = null)
     {
         EnsureBuffersFor(info.Width, info.Height, devicePixelRatio);
         canvas.Clear(SKColors.Black);
@@ -64,15 +66,17 @@ public sealed class CanvasRenderer : IDisposable
             _viewport.Current,
             primitives,
             renderHitBuffer ? _hitBuffer : null,
-            drawAxes);
-        canvas.DrawBitmap(_drawBitmap, 0, 0);
+            drawAxes,
+            effectiveValues);
+        canvas.DrawBitmap(_drawBitmap, 0, 0, new SKSamplingOptions(SKFilterMode.Nearest));
 
         if (selection is { Count: > 0 })
         {
             var bounds = selection.Count == 1
-                ? selection[0].GetWorldBoundingBox()
-                : MergeBounds(selection);
-            var drawHandles = selection.Count == 1 && selection[0].CanResizeInWorld;
+                ? selection[0].GetWorldBoundingBox(effectiveValues)
+                : MergeBounds(selection, effectiveValues);
+            var drawHandles = selection.Count == 1
+                && selection[0].CanResizeInWorldWith(effectiveValues);
             _selectionOverlay.Draw(canvas, _viewport.Current, bounds, drawHandles);
         }
     }
@@ -91,14 +95,19 @@ public sealed class CanvasRenderer : IDisposable
     public void PanBy(float cssDx, float cssDy) => _viewport.PanBy(cssDx, cssDy);
 
     /// <summary>将内容边界适配到视口（带内边距），居中显示内容（空内容不变）。</summary>
-    public void FitToContent(IReadOnlyList<Primitive> primitives, float paddingCss = 40f)
+    public void FitToContent(
+        IReadOnlyList<Primitive> primitives,
+        float paddingCss = 40f,
+        IEffectiveValueSource? effectiveValues = null)
     {
         if (primitives.Count == 0)
         {
             return;
         }
 
-        _viewport.FitToContent(MergeBounds(primitives), paddingCss);
+        _viewport.FitToContent(
+            MergeBounds(primitives, effectiveValues),
+            paddingCss);
     }
 
     /// <summary>将给定世界包围盒适配到视口（仿真页的动画范围 Fit）。</summary>
@@ -143,11 +152,15 @@ public sealed class CanvasRenderer : IDisposable
         => _selectionOverlay.HitTestUnionBox(screenCssX, screenCssY, worldBounds, _viewport.Current);
 
     /// <summary>交互层的分层命中测试：角柄（单选）→ 图元颜色键 → 多选并集框。</summary>
-    public HitTestResult HitTestSelection(float screenCssX, float screenCssY, IReadOnlyList<Primitive> selection)
+    public HitTestResult HitTestSelection(
+        float screenCssX,
+        float screenCssY,
+        IReadOnlyList<Primitive> selection,
+        IEffectiveValueSource? effectiveValues = null)
     {
-        if (selection.Count == 1 && selection[0].CanResizeInWorld)
+        if (selection.Count == 1 && selection[0].CanResizeInWorldWith(effectiveValues))
         {
-            var bounds = selection[0].GetWorldBoundingBox();
+            var bounds = selection[0].GetWorldBoundingBox(effectiveValues);
             var handle = _selectionOverlay.HitTestHandles(screenCssX, screenCssY, bounds, _viewport.Current);
             if (handle is not null)
             {
@@ -172,7 +185,7 @@ public sealed class CanvasRenderer : IDisposable
                 InUnionBox = _selectionOverlay.HitTestUnionBox(
                     screenCssX,
                     screenCssY,
-                    MergeBounds(selection),
+                    MergeBounds(selection, effectiveValues),
                     _viewport.Current),
             };
         }
@@ -206,13 +219,15 @@ public sealed class CanvasRenderer : IDisposable
         return chain;
     }
 
-    private static Box MergeBounds(IReadOnlyList<Primitive> primitives)
+    private static Box MergeBounds(
+        IReadOnlyList<Primitive> primitives,
+        IEffectiveValueSource? effectiveValues = null)
     {
         float minX = float.MaxValue, minY = float.MaxValue;
         float maxX = float.MinValue, maxY = float.MinValue;
         foreach (var primitive in primitives)
         {
-            var box = primitive.GetWorldBoundingBox();
+            var box = primitive.GetWorldBoundingBox(effectiveValues);
             minX = MathF.Min(minX, box.MinX);
             minY = MathF.Min(minY, box.MinY);
             maxX = MathF.Max(maxX, box.MaxX);

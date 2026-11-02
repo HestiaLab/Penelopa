@@ -12,7 +12,7 @@ using SimulationTimelineComponent = Penelopa.Web.Components.Simulation.Simulatio
 
 namespace Penelopa.Web.Tests.Simulation;
 
-public class SimulationShellTests : TestContext
+public class SimulationShellTests : BunitContext
 {
     private readonly PrimitiveService _service;
 
@@ -20,6 +20,7 @@ public class SimulationShellTests : TestContext
     {
         _service = new PrimitiveService();
         Services.AddSingleton<IPrimitiveService>(_service);
+        Services.AddSingleton<DocumentEditor>();
         Services.AddSingleton<SimulationConfigStore>();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
@@ -27,7 +28,7 @@ public class SimulationShellTests : TestContext
     [Fact]
     public void TopToolbar_ShowsBaseRelativeSimulationLink()
     {
-        var cut = RenderComponent<PenelopaTopToolbar>();
+        var cut = Render<PenelopaTopToolbar>();
 
         var link = cut.Find("a");
 
@@ -50,7 +51,7 @@ public class SimulationShellTests : TestContext
             new[] { Keyframe(0, 10), Keyframe(1, 20) });
         Primitive? selected = null;
 
-        var cut = RenderComponent<SimulationTree>(parameters => parameters
+        var cut = Render<SimulationTree>(parameters => parameters
             .Add(component => component.Roots, new Primitive[] { container })
             .Add(component => component.SelectedId, child.Id)
             .Add(component => component.Tracks, new[] { track })
@@ -76,7 +77,7 @@ public class SimulationShellTests : TestContext
     [Fact]
     public void SimulationTree_ShowsEmptyState()
     {
-        var cut = RenderComponent<SimulationTree>(parameters => parameters
+        var cut = Render<SimulationTree>(parameters => parameters
             .Add(component => component.Roots, Array.Empty<Primitive>()));
 
         Assert.Contains("No primitives yet", cut.Markup);
@@ -92,7 +93,7 @@ public class SimulationShellTests : TestContext
         var stopCalls = 0;
         var loopCalls = 0;
 
-        var cut = RenderComponent<SimulationTransport>(parameters => parameters
+        var cut = Render<SimulationTransport>(parameters => parameters
             .Add(component => component.State, SimulationState.Ready)
             .Add(component => component.CanPlay, true)
             .Add(component => component.CanStop, false)
@@ -126,7 +127,7 @@ public class SimulationShellTests : TestContext
         Assert.Equal(0, pauseCalls);
         Assert.Equal(0, stopCalls);
 
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(component => component.State, SimulationState.Playing)
             .Add(component => component.CanPlay, true)
             .Add(component => component.CanStop, true)
@@ -142,7 +143,7 @@ public class SimulationShellTests : TestContext
         Assert.Equal(1, pauseCalls);
         Assert.Equal(1, stopCalls);
 
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(component => component.State, SimulationState.Finished)
             .Add(component => component.CanPlay, true)
             .Add(component => component.CanStop, true)
@@ -153,7 +154,7 @@ public class SimulationShellTests : TestContext
         Button(cut, "Replay").Click();
         Assert.Equal(2, playCalls);
 
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(component => component.State, SimulationState.Ready)
             .Add(component => component.CanPlay, false)
             .Add(component => component.CanStop, false)
@@ -169,7 +170,7 @@ public class SimulationShellTests : TestContext
     {
         var channel = new SimulationReadoutChannel();
         channel.Publish(Readout(SimulationState.Playing, 0.25d));
-        var cut = RenderComponent<SimulationTransport>(parameters => parameters
+        var cut = Render<SimulationTransport>(parameters => parameters
             .Add(component => component.State, SimulationState.Playing)
             .Add(component => component.CanPlay, true)
             .Add(component => component.CanStop, true)
@@ -195,7 +196,7 @@ public class SimulationShellTests : TestContext
         var channel = new SimulationReadoutChannel();
         channel.Publish(Readout(SimulationState.Ready, 0d));
 
-        var cut = RenderComponent<SimulationInspector>(parameters => parameters
+        var cut = Render<SimulationInspector>(parameters => parameters
             .Add(component => component.Primitive, rectangle)
             .Add(component => component.Channel, channel));
 
@@ -218,7 +219,7 @@ public class SimulationShellTests : TestContext
         var channel = new SimulationReadoutChannel();
         channel.Publish(Readout(SimulationState.Ready, 0d));
 
-        var cut = RenderComponent<SimulationInspector>(parameters => parameters
+        var cut = Render<SimulationInspector>(parameters => parameters
             .Add(component => component.Primitive, rectangle)
             .Add(component => component.Config, config)
             .Add(component => component.Channel, channel));
@@ -253,7 +254,7 @@ public class SimulationShellTests : TestContext
         channel.Publish(Readout(SimulationState.Ready, 0d));
         string? selected = null;
 
-        var cut = RenderComponent<SimulationInspector>(parameters => parameters
+        var cut = Render<SimulationInspector>(parameters => parameters
             .Add(component => component.Primitive, rectangle)
             .Add(component => component.Channel, channel)
             .Add(component => component.CanEdit, true)
@@ -279,7 +280,7 @@ public class SimulationShellTests : TestContext
         Assert.True(store.TryAddTrack(rectangle.Id, "PosX", 0d, 10f, out var error), error);
         var keyframe = store.Config.Tracks.Single().Keyframes[0];
 
-        var cut = RenderComponent<SimulationKeyframeEditor>(parameters => parameters
+        var cut = Render<SimulationKeyframeEditor>(parameters => parameters
             .Add(component => component.PrimitiveId, rectangle.Id)
             .Add(component => component.PropertyName, "PosX")
             .Add(component => component.KeyframeIndex, 0)
@@ -308,7 +309,7 @@ public class SimulationShellTests : TestContext
         Assert.True(store.TryAddTrack(rectangle.Id, "PosX", 0d, 10f, out var error), error);
         var keyframe = store.Config.Tracks.Single().Keyframes[0];
 
-        var cut = RenderComponent<SimulationKeyframeEditor>(parameters => parameters
+        var cut = Render<SimulationKeyframeEditor>(parameters => parameters
             .Add(component => component.PrimitiveId, rectangle.Id)
             .Add(component => component.PropertyName, "PosX")
             .Add(component => component.KeyframeIndex, 0)
@@ -323,7 +324,7 @@ public class SimulationShellTests : TestContext
             store.Config.Tracks.Single().Keyframes[0].Interpolation);
 
         keyframe = store.Config.Tracks.Single().Keyframes[0];
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(component => component.Keyframe, keyframe));
         cut.Find("select").Change("CubicBezier");
         Assert.Equal(
@@ -331,7 +332,7 @@ public class SimulationShellTests : TestContext
             store.Config.Tracks.Single().Keyframes[0].Interpolation);
 
         keyframe = store.Config.Tracks.Single().Keyframes[0];
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(component => component.Keyframe, keyframe));
         var bezierInputs = cut.FindAll(".penelopa-simulation-bezier-grid input");
         Assert.Equal(4, bezierInputs.Count);
@@ -364,7 +365,7 @@ public class SimulationShellTests : TestContext
         var channel = new SimulationReadoutChannel();
         channel.Publish(Readout(SimulationState.Ready, 0d));
 
-        var cut = RenderComponent<SimulationTimelineComponent>(parameters => parameters
+        var cut = Render<SimulationTimelineComponent>(parameters => parameters
             .Add(component => component.Primitive, rectangle)
             .Add(component => component.Config, config)
             .Add(component => component.Duration, 2d)
@@ -393,7 +394,7 @@ public class SimulationShellTests : TestContext
         channel.Publish(Readout(SimulationState.Ready, 0d));
         double? seeked = null;
 
-        var cut = RenderComponent<SimulationTimelineComponent>(parameters => parameters
+        var cut = Render<SimulationTimelineComponent>(parameters => parameters
             .Add(component => component.Primitive, rectangle)
             .Add(component => component.Config, config)
             .Add(component => component.Duration, 2d)
@@ -435,7 +436,7 @@ public class SimulationShellTests : TestContext
                 "Radius must be greater than zero."),
         };
 
-        var cut = RenderComponent<SimulationIssueSummary>(parameters => parameters
+        var cut = Render<SimulationIssueSummary>(parameters => parameters
             .Add(component => component.Issues, issues));
 
         Assert.Contains(
@@ -453,7 +454,7 @@ public class SimulationShellTests : TestContext
     [Fact]
     public void SimulationIssueSummary_RendersNothingWithoutIssues()
     {
-        var cut = RenderComponent<SimulationIssueSummary>();
+        var cut = Render<SimulationIssueSummary>();
 
         Assert.Empty(cut.FindAll(".penelopa-simulation-issues"));
     }
@@ -464,7 +465,7 @@ public class SimulationShellTests : TestContext
         var channel = new SimulationReadoutChannel();
         var calls = new List<string>();
 
-        var cut = RenderComponent<SimulationTransport>(parameters => parameters
+        var cut = Render<SimulationTransport>(parameters => parameters
             .Add(component => component.State, SimulationState.Paused)
             .Add(component => component.CanPlay, true)
             .Add(component => component.CanStop, true)

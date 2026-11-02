@@ -5,8 +5,8 @@ namespace Penelopa.Core.Simulation;
 
 /// <summary>
 /// 估算动画在整条时间轴上的世界包围盒，供只读画布 Fit 使用。
-/// 采样点包含所有关键帧时间与相邻中点；临时写入/恢复属性，不产生通知或历史。
-/// 估算在 Ready/Stop 后或暂停会话的显式 Fit 时调用，不得与播放帧并发。
+/// 采样点包含所有关键帧时间与相邻中点；使用临时 overlay 计算生效值，
+/// 不写入模型、不产生通知或历史。
 /// </summary>
 public static class SimulationBoundsEstimator
 {
@@ -22,7 +22,7 @@ public static class SimulationBoundsEstimator
         }
 
         var index = SimulationPrimitiveIndex.Create(roots);
-        var baseBounds = ComputeBounds(roots);
+        var baseBounds = ComputeBounds(roots, null);
         var resolution = SimulationResolver.Resolve(config, index);
         var issues = new List<SimulationValidationIssue>(
             SimulationValidator.ValidateStructure(config));
@@ -40,41 +40,22 @@ public static class SimulationBoundsEstimator
         }
 
         var sampleTimes = BuildSampleTimes(resolution.Active, duration);
-        var baseValues = new List<(FloatPropValue Property, float Value)>();
-        foreach (var entry in index.FloatProperties)
+        var union = baseBounds;
+        var overlay = new SimulationOverlay();
+        foreach (var time in sampleTimes)
         {
-            baseValues.Add((entry.Property, entry.Property.Value));
-        }
-
-        try
-        {
-            var union = baseBounds;
-            foreach (var time in sampleTimes)
+            overlay.Clear();
+            foreach (var resolved in resolution.Active)
             {
-                foreach (var (property, baseValue) in baseValues)
-                {
-                    property.Value = baseValue;
-                }
-
-                foreach (var resolved in resolution.Active)
-                {
-                    resolved.Property.Value = SimulationEvaluator.Evaluate(
-                        resolved.Track,
-                        time);
-                }
-
-                union = Union(union, ComputeBounds(roots));
+                overlay.Set(
+                    resolved.Property,
+                    SimulationEvaluator.Evaluate(resolved.Track, time));
             }
 
-            return union;
+            union = Union(union, ComputeBounds(roots, overlay));
         }
-        finally
-        {
-            foreach (var (property, baseValue) in baseValues)
-            {
-                property.Value = baseValue;
-            }
-        }
+
+        return union;
     }
 
     private static IReadOnlyList<double> BuildSampleTimes(
@@ -124,9 +105,11 @@ public static class SimulationBoundsEstimator
         return downsampled;
     }
 
-    private static Box ComputeBounds(IReadOnlyList<Primitive> roots)
+    private static Box ComputeBounds(
+        IReadOnlyList<Primitive> roots,
+        IEffectiveValueSource? values)
     {
-        var first = roots[0].GetWorldBoundingBox();
+        var first = roots[0].GetWorldBoundingBox(values);
         var minX = first.MinX;
         var minY = first.MinY;
         var maxX = first.MaxX;
@@ -134,7 +117,7 @@ public static class SimulationBoundsEstimator
 
         for (var position = 1; position < roots.Count; position++)
         {
-            var bounds = roots[position].GetWorldBoundingBox();
+            var bounds = roots[position].GetWorldBoundingBox(values);
             minX = MathF.Min(minX, bounds.MinX);
             minY = MathF.Min(minY, bounds.MinY);
             maxX = MathF.Max(maxX, bounds.MaxX);

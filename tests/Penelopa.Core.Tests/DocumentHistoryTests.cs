@@ -44,8 +44,10 @@ public class DocumentHistoryTests
         service.Undo(); // clean history
         service.Add(rect);
 
-        service.CaptureForGesture();
+        service.BeginTransaction();
+        service.RecordBeforeChange(new Primitive[] { rect });
         rect.Translate(30f, 0f);
+        service.CommitTransaction();
         service.Undo();
 
         Assert.Equal(0f, rect.PosX.Value);
@@ -103,8 +105,10 @@ public class DocumentHistoryTests
         service.Add(container);
         service.AddToContainer(container, child);
 
-        service.CaptureForGesture();
+        service.BeginTransaction();
+        service.RecordBeforeChange(new Primitive[] { child });
         child.Translate(0f, 10f);
+        service.CommitTransaction();
         service.Undo();
 
         Assert.Equal(0f, child.PosX.Value);

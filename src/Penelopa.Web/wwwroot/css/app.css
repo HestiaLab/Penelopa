@@ -1593,3 +1593,289 @@ select {
 a {
   color: var(--penelopa-accent);
 }
+
+/* ---- 14. Document recovery ---- */
+
+.penelopa-recovery-banner {
+  position: fixed;
+  inset-block-start: 0.75rem;
+  inset-inline: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: min(46rem, calc(100% - 2rem));
+  margin-inline: auto;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--penelopa-warning);
+  border-radius: 0.5rem;
+  background: var(--penelopa-warning-bg);
+  color: var(--penelopa-warning-text);
+  box-shadow: var(--penelopa-shadow-popover);
+}
+
+.penelopa-recovery-copy {
+  display: grid;
+  gap: 0.125rem;
+  font-size: 0.8125rem;
+}
+
+.penelopa-recovery-copy strong {
+  font-size: 0.875rem;
+}
+
+.penelopa-recovery-error {
+  color: var(--penelopa-danger-text);
+}
+
+.penelopa-recovery-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+}
+
+@media (max-width: 700px) {
+  .penelopa-recovery-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .penelopa-recovery-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* ---- 15. Cloud conflict dialog ---- */
+
+.penelopa-cloud-conflict-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(13 17 23 / 45%);
+}
+
+.penelopa-cloud-conflict {
+  width: min(32rem, 100%);
+  padding: 1.25rem;
+  border: 1px solid var(--penelopa-border);
+  border-radius: 0.5rem;
+  background: var(--penelopa-surface);
+  color: var(--penelopa-text);
+  box-shadow: var(--penelopa-shadow-popover);
+}
+
+.penelopa-cloud-conflict h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.penelopa-cloud-conflict p {
+  margin: 0 0 1rem;
+  color: var(--penelopa-text-secondary);
+  font-size: 0.875rem;
+}
+
+.penelopa-cloud-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* ---- 16. Multi-document tabs ---- */
+
+.penelopa-document-tabs-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.penelopa-document-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 1.875rem;
+  padding: 0.1875rem 0.5rem 0;
+  border-bottom: 1px solid var(--penelopa-divider);
+  background: var(--penelopa-chrome);
+}
+
+.penelopa-document-tablist {
+  display: flex;
+  min-width: 0;
+  gap: 0.125rem;
+  overflow-x: auto;
+}
+
+.penelopa-document-tab {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+}
+
+.penelopa-document-tab.is-active {
+  border-color: var(--penelopa-border);
+  background: var(--penelopa-surface);
+}
+
+.penelopa-document-tab-label,
+.penelopa-document-tab-close,
+.penelopa-document-tab-new {
+  border: 0;
+  background: transparent;
+  color: var(--penelopa-text-secondary);
+  cursor: pointer;
+}
+
+.penelopa-document-tab-label {
+  max-width: 12rem;
+  overflow: hidden;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.penelopa-document-tab.is-active .penelopa-document-tab-label {
+  color: var(--penelopa-text);
+}
+
+.penelopa-document-tab-close {
+  display: grid;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-inline-end: 0.1875rem;
+  place-items: center;
+  border-radius: 3px;
+}
+
+.penelopa-document-tab-close:hover,
+.penelopa-document-tab-new:hover:not(:disabled) {
+  background: var(--penelopa-hover);
+  color: var(--penelopa-text);
+}
+
+.penelopa-document-tab-new {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-block-end: 0.1875rem;
+  border-radius: 3px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.penelopa-document-tab-new:disabled {
+  color: var(--penelopa-text-disabled);
+  cursor: default;
+}
+
+.penelopa-document-tabs-message {
+  margin-inline-start: 0.5rem;
+  color: var(--penelopa-danger-text);
+  font-size: 0.75rem;
+}
+
+.penelopa-document-close-confirm {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0.5rem;
+  z-index: 80;
+  display: grid;
+  max-width: 30rem;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--penelopa-warning);
+  border-radius: 0.375rem;
+  background: var(--penelopa-warning-bg);
+  color: var(--penelopa-warning-text);
+  box-shadow: var(--penelopa-shadow-popover);
+  font-size: 0.75rem;
+}
+
+.penelopa-document-close-confirm-actions {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.penelopa-document-library-status.is-unsaved {
+  color: var(--penelopa-warning-text);
+}
+
+.penelopa-document-library-status.is-empty {
+  color: var(--penelopa-text-muted);
+}
+
+.penelopa-document-library {
+  position: relative;
+  flex: 0 0 auto;
+  margin-block-end: 0.1875rem;
+}
+
+.penelopa-document-library-toggle {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--penelopa-text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.penelopa-document-library-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.penelopa-document-library-toggle:hover {
+  background: var(--penelopa-hover);
+  color: var(--penelopa-text);
+}
+
+.penelopa-document-library-menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 70;
+  display: grid;
+  min-width: 13rem;
+  max-height: 16rem;
+  padding: 0.25rem;
+  overflow-y: auto;
+  border: 1px solid var(--penelopa-border);
+  border-radius: 0.375rem;
+  background: var(--penelopa-surface);
+  box-shadow: var(--penelopa-shadow-popover);
+}
+
+.penelopa-document-library-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--penelopa-text);
+  text-align: start;
+  cursor: pointer;
+}
+
+.penelopa-document-library-item:hover {
+  background: var(--penelopa-hover);
+}
+
+.penelopa-document-library-item small {
+  color: var(--penelopa-text-muted);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}

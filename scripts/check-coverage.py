@@ -16,6 +16,7 @@ THRESHOLDS = {
 PER_FILE_THRESHOLDS = {
     ("Penelopa.Core", "Simulation/"): 0.90,
     ("Penelopa.Core", "Services/DocumentSerializer.cs"): 0.90,
+    ("Penelopa.Core", "Services/DocumentHistory.cs"): 0.90,
 }
 
 report_paths = glob.glob(str(ROOT / "artifacts" / "coverage" / "**" / "coverage.cobertura.xml"), recursive=True)

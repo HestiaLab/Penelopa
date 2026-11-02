@@ -52,6 +52,26 @@ interface StorageWriteResult {
     error: string | null;
 }
 
+interface JournalEntry {
+    documentId: string;
+    revision: number;
+    savedRevision: number;
+    savedAt: string;
+    json: string;
+    hash: string;
+}
+
+interface JournalReadResult {
+    ok: boolean;
+    value: JournalEntry | null;
+    error: string | null;
+}
+
+interface JournalWriteResult {
+    ok: boolean;
+    error: string | null;
+}
+
 interface DropZoneHandle {
     dispose(): void;
 }
@@ -70,6 +90,9 @@ interface PenelopaNamespace {
     prefersReducedMotion(): boolean;
     readStorage(key: string): StorageReadResult;
     writeStorage(key: string, value: string): StorageWriteResult;
+    readJournal(key?: string): Promise<JournalReadResult>;
+    writeJournal(entry: JournalEntry, key?: string): Promise<JournalWriteResult>;
+    clearJournal(key?: string): Promise<JournalWriteResult>;
     downloadTextFile(fileName: string, content: string): void;
 }
 
@@ -130,6 +153,117 @@ window.penelopa.writeStorage = function (key: string, value: string): StorageWri
         return { ok: true, error: null };
     } catch (error) {
         console.error('[Penelopa] localStorage write failed', error);
+        return { ok: false, error: describeStorageError(error) };
+    }
+};
+
+// IndexedDB 只保存当前文档的 journal；localStorage 仍是显式保存的唯一来源。
+// 打开/事务失败通过结果对象返回，自动保存失败不得击穿编辑循环。
+const journalDatabaseName = 'penelopa';
+const journalStoreName = 'journal';
+const journalKey = 'penelopa.document';
+let journalDatabase: Promise<IDBDatabase> | null = null;
+
+function openJournalDatabase(): Promise<IDBDatabase> {
+    if (journalDatabase) {
+        return journalDatabase;
+    }
+
+    journalDatabase = new Promise<IDBDatabase>((resolve, reject) => {
+        if (typeof window.indexedDB === 'undefined' || window.indexedDB === null) {
+            reject(new Error('IndexedDB is not available'));
+            return;
+        }
+
+        let request: IDBOpenDBRequest;
+        try {
+            request = window.indexedDB.open(journalDatabaseName, 1);
+        } catch (error) {
+            reject(error);
+            return;
+        }
+
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(journalStoreName)) {
+                db.createObjectStore(journalStoreName);
+            }
+        };
+        request.onsuccess = () => {
+            const db = request.result;
+            db.onversionchange = () => {
+                db.close();
+                journalDatabase = null;
+            };
+            resolve(db);
+        };
+        request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'));
+        request.onblocked = () => reject(new Error('IndexedDB open blocked'));
+    });
+
+    return journalDatabase;
+}
+
+async function readJournalEntry(key: string): Promise<JournalEntry | null> {
+    const db = await openJournalDatabase();
+    return new Promise<JournalEntry | null>((resolve, reject) => {
+        const transaction = db.transaction(journalStoreName, 'readonly');
+        const request = transaction.objectStore(journalStoreName).get(key);
+        request.onsuccess = () => resolve((request.result as JournalEntry | undefined) ?? null);
+        request.onerror = () => reject(request.error ?? new Error('IndexedDB read failed'));
+        transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB read aborted'));
+    });
+}
+
+async function writeJournalEntry(entry: JournalEntry, key: string): Promise<void> {
+    const db = await openJournalDatabase();
+    await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(journalStoreName, 'readwrite');
+        transaction.objectStore(journalStoreName).put(entry, key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB write failed'));
+        transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB write aborted'));
+    });
+}
+
+async function clearJournalEntry(key: string): Promise<void> {
+    const db = await openJournalDatabase();
+    await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(journalStoreName, 'readwrite');
+        transaction.objectStore(journalStoreName).delete(key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB clear failed'));
+        transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB clear aborted'));
+    });
+}
+
+window.penelopa.readJournal = async function (key = journalKey): Promise<JournalReadResult> {
+    try {
+        return { ok: true, value: await readJournalEntry(key), error: null };
+    } catch (error) {
+        console.error('[Penelopa] journal read failed', error);
+        return { ok: false, value: null, error: describeStorageError(error) };
+    }
+};
+
+window.penelopa.writeJournal = async function (
+    entry: JournalEntry,
+    key = journalKey): Promise<JournalWriteResult> {
+    try {
+        await writeJournalEntry(entry, key);
+        return { ok: true, error: null };
+    } catch (error) {
+        console.error('[Penelopa] journal write failed', error);
+        return { ok: false, error: describeStorageError(error) };
+    }
+};
+
+window.penelopa.clearJournal = async function (key = journalKey): Promise<JournalWriteResult> {
+    try {
+        await clearJournalEntry(key);
+        return { ok: true, error: null };
+    } catch (error) {
+        console.error('[Penelopa] journal clear failed', error);
         return { ok: false, error: describeStorageError(error) };
     }
 };
@@ -212,8 +346,10 @@ window.penelopa.attachFileDrop = function (
         const tabs = rootEl.querySelectorAll<HTMLElement>('[role="tab"]');
         for (const tab of Array.from(tabs)) {
             if ((tab.textContent ?? '').trim() === 'Tools') {
-                // Atlas 以属性存在表示选中（aria-selected="" 也是选中）。
-                if (!tab.hasAttribute('aria-selected')) {
+                // Atlas 0.3 用 aria-selected="" 表示选中，0.4 起使用标准
+                // aria-selected="true"/"false"；两种格式都必须识别。
+                const selected = tab.getAttribute('aria-selected');
+                if (selected !== 'true' && selected !== '') {
                     tab.click();
                 }
                 return;
@@ -719,6 +855,12 @@ window.penelopa.attachPointer = function (canvasEl: HTMLElement, dotNetRef: DotN
         if (target) {
             const tag = target.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+                return;
+            }
+
+            // 图元树自行转发 Delete / Ctrl+Z / Ctrl+Y；window 级处理器必须让路，
+            // 否则一次按键会执行两次撤销。
+            if (target.closest?.('[role="tree"]')) {
                 return;
             }
         }

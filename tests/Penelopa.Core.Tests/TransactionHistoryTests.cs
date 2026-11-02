@@ -196,6 +196,7 @@ public class TransactionHistoryTests
         service.Add(rect);
 
         service.BeginTransaction();
+        service.RecordBeforeChange(new Primitive[] { rect });
         rect.PosX.Value = 40f;
         service.CommitTransaction();
 

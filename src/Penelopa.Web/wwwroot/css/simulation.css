@@ -868,6 +868,13 @@
   }
 }
 
+/* Atlas 0.4.0 renders a tool-header close/collapse control for every tool.
+   Simulation regions are protected: they can be collapsed via splitters but
+   must not expose a close affordance (SRS 4.2.2, ED-... / SIM-...). */
+.penelopa-simulation .atlas-v2-panel-close {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .penelopa-simulation *,
   .penelopa-simulation *::before,
@@ -875,4 +882,15 @@
     transition-duration: 0s !important;
     animation-duration: 0s !important;
   }
+}
+
+.penelopa-simulation-document {
+  max-width: 11rem;
+  height: 1.75rem;
+  padding: 0 0.375rem;
+  border: 1px solid var(--atlas-border, var(--penelopa-border));
+  border-radius: 4px;
+  background: var(--penelopa-surface);
+  color: var(--penelopa-text);
+  font-size: 0.75rem;
 }

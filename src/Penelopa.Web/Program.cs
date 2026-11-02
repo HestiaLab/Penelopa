@@ -15,13 +15,19 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 // Atlas.Blazor 工作区服务（工作区工厂、内容路由、历史）
 builder.Services.AddAtlasWorkspace();
 
-// 编辑器面板共享的图元存储和选区
-builder.Services.AddSingleton<IPrimitiveService, PrimitiveService>();
+// 多文档会话：每个会话独立模型/历史/配置；现有组件通过活动代理访问当前文档。
+builder.Services.AddSingleton<DocumentSessionManager>();
+builder.Services.AddSingleton(sp => sp.GetRequiredService<DocumentSessionManager>().ActiveProxy);
+builder.Services.AddSingleton<IPrimitiveService>(
+    sp => sp.GetRequiredService<DocumentSessionManager>().ActiveProxy);
+// 所有文档写入的唯一入口；内部转发到活动会话。
+builder.Services.AddSingleton(sp => sp.GetRequiredService<DocumentSessionManager>().Editor);
 
-// 仿真配置跨编辑页/仿真页保留；localStorage 保存边界由两个页面共享
-builder.Services.AddSingleton<SimulationConfigStore>();
-builder.Services.AddSingleton<DocumentStorage>();
-builder.Services.AddSingleton<DocumentImportRollbackService>();
+// 活动会话的仿真配置、保存边界、journal 与导入回滚。
+builder.Services.AddSingleton(sp => sp.GetRequiredService<DocumentSessionManager>().ConfigStore);
+builder.Services.AddSingleton(sp => sp.GetRequiredService<DocumentSessionManager>().Storage);
+builder.Services.AddSingleton(sp => sp.GetRequiredService<DocumentSessionManager>().Journal);
+builder.Services.AddSingleton(sp => sp.GetRequiredService<DocumentSessionManager>().ImportRollback);
 builder.Services.AddScoped<DocumentFileService>();
 
 await builder.Build().RunAsync();

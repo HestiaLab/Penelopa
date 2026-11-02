@@ -10,7 +10,4 @@ public interface IAlignable
 
     /// <summary>获取世界空间锚点位置（AABB 左上角）。</summary>
     Point GetWorldPosition();
-
-    /// <summary>平移对象，使锚点到达指定的世界坐标。</summary>
-    void SetWorldPosition(Point position);
 }

@@ -30,7 +30,8 @@ public class DocumentFileServiceTests
                 BaseAddress = new Uri("http://localhost/"),
             },
             _primitives,
-            _config);
+            _config,
+            new DocumentEditor(_primitives));
     }
 
     [Fact]
@@ -81,7 +82,43 @@ public class DocumentFileServiceTests
         Assert.Null(result.Document);
         Assert.Contains("document version 1", result.Error);
         Assert.Contains("no longer supported", result.Error);
-        Assert.Contains("Only version 2", result.Error);
+        Assert.Contains("Only version 3", result.Error);
+    }
+
+    [Fact]
+    public async Task ReadAsync_VersionTwoDocument_IsRejected()
+    {
+        const string json = @"{
+          ""Version"": 2,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        var result = await _service.ReadAsync(BrowserFile("v2.json", json));
+
+        Assert.False(result.Success);
+        Assert.Contains("document version 2", result.Error);
+        Assert.Contains("Only version 3", result.Error);
+    }
+
+    [Fact]
+    public async Task ReadAsync_UnknownPrimitiveType_ReportsTypeId()
+    {
+        const string json = @"{
+          ""Version"": 3,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""acme.hexagon"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        var result = await _service.ReadAsync(BrowserFile("unknown.json", json));
+
+        Assert.False(result.Success);
+        Assert.Null(result.Document);
+        Assert.Contains("acme.hexagon", result.Error);
     }
 
     [Fact]
@@ -98,16 +135,16 @@ public class DocumentFileServiceTests
 
         Assert.False(result.Success);
         Assert.Contains("no supported document version", result.Error);
-        Assert.Contains("Only version 2", result.Error);
+        Assert.Contains("Only version 3", result.Error);
     }
 
     [Fact]
     public async Task ReadAsync_NewerDocumentVersion_IsRejected()
     {
         const string json = @"{
-          ""Version"": 3,
+          ""Version"": 4,
           ""Primitives"": [
-            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" }
           ],
           ""SelectionIds"": []
         }";
@@ -117,7 +154,7 @@ public class DocumentFileServiceTests
         Assert.False(result.Success);
         Assert.Contains("version 3", result.Error);
         Assert.Contains("newer than this app supports", result.Error);
-        Assert.Contains("Only version 2", result.Error);
+        Assert.Contains("Only version 3", result.Error);
     }
 
     [Fact]
@@ -159,7 +196,7 @@ public class DocumentFileServiceTests
     public async Task ReadAsync_InvalidUtf8_IsRejected()
     {
         var prefix = Encoding.UTF8.GetBytes(
-            "{\"Version\":2,\"Primitives\":[{\"Id\":\"00000000-0000-0000-0000-000000000001\",\"Type\":\"Rectangle\",\"Props\":{\"Name\":\"");
+            "{\"Version\":3,\"DocumentId\":\"10000000-0000-0000-0000-000000000009\",\"Revision\":1,\"Primitives\":[{\"Id\":\"00000000-0000-0000-0000-000000000001\",\"Type\":\"penelopa.rect\",\"Props\":{\"Name\":\"");
         var suffix = Encoding.UTF8.GetBytes("\"}}],\"SelectionIds\":[]}");
         var bytes = prefix.Concat(new byte[] { 0xFF }).Concat(suffix).ToArray();
 
@@ -286,7 +323,8 @@ public class DocumentFileServiceTests
 
         Assert.EndsWith(".penelopa.json", payload.FileName);
         using var document = JsonDocument.Parse(payload.Json);
-        Assert.Equal(2, document.RootElement.GetProperty("Version").GetInt32());
+        Assert.Equal(3, document.RootElement.GetProperty("Version").GetInt32());
+        Assert.NotEqual(Guid.Empty, document.RootElement.GetProperty("DocumentId").GetGuid());
         var tracks = document.RootElement
             .GetProperty("Simulation")
             .GetProperty("Tracks");

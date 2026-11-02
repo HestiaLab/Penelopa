@@ -357,7 +357,7 @@ public class SimulationConfigStoreTests
     }
 
     [Fact]
-    public void UndoRedo_RespectsFiftyStepLimitAndClearsRedo()
+    public void UndoRedo_TraversesAllConfigurationEdits()
     {
         var rectangle = AddRectangle();
         var store = CreateStore();
@@ -374,16 +374,15 @@ public class SimulationConfigStoreTests
                 error);
         }
 
-        for (var step = 0; step < SimulationLimits.ConfigUndoDepth; step++)
+        for (var step = 0; step < 55; step++)
         {
             store.Undo();
         }
 
-        Assert.False(store.CanUndo);
-        Assert.True(store.CanRedo);
-        Assert.Equal(5f, SingleTrack(store, rectangle, "PosX").Keyframes[1].Value);
+        Assert.Equal(100f, SingleTrack(store, rectangle, "PosX").Keyframes[1].Value);
+        Assert.True(store.CanUndo);
 
-        for (var step = 0; step < SimulationLimits.ConfigUndoDepth; step++)
+        for (var step = 0; step < 55; step++)
         {
             store.Redo();
         }
@@ -408,13 +407,17 @@ public class SimulationConfigStoreTests
         var store = CreateStore();
         Assert.True(store.TryAddTrack(rectangle.Id, "PosX", 0d, 10f, out var error), error);
 
+        var revisionBeforeLoop = _service.Revision;
         store.SetLoop(true);
         Assert.True(store.Config.Loop);
+        Assert.Equal(revisionBeforeLoop + 1, _service.Revision);
 
+        store.Undo();
         store.Undo();
         Assert.Empty(store.Config.Tracks);
         Assert.True(store.Config.Loop);
 
+        store.Redo();
         store.Redo();
         Assert.Single(store.Config.Tracks);
         Assert.True(store.Config.Loop);
@@ -470,22 +473,28 @@ public class SimulationConfigStoreTests
     }
 
     [Fact]
-    public void ClearHistory_KeepsConfigAndClearsStacks()
+    public void Undo_UndoesDocumentAndConfigurationInOneOrder()
     {
         var rectangle = AddRectangle();
         var store = CreateStore();
         AddLinearTrack(store, rectangle, "PosX");
-        Assert.True(store.CanUndo);
+        Assert.True(_service.TrySetProperty(rectangle, rectangle.PosX, "42", out var error), error);
 
-        store.ClearHistory();
+        store.Undo();
+        Assert.Equal(10f, rectangle.PosX.Value);
 
-        Assert.False(store.CanUndo);
-        Assert.False(store.CanRedo);
-        Assert.Single(store.Config.Tracks);
+        store.Undo();
+        Assert.Equal(10f, SingleTrack(store, rectangle, "PosX").Keyframes[1].Value);
+
+        store.Undo();
+        Assert.Empty(store.Config.Tracks);
+
+        store.Undo();
+        Assert.Empty(_service.GetAll());
     }
 
     [Fact]
-    public void ReplaceConfig_ClearsUndoRedoAndRaisesChanged()
+    public void ReplaceConfig_ReplacesWithoutClearingUnifiedHistory()
     {
         var rectangle = AddRectangle();
         var store = CreateStore();
@@ -499,39 +508,29 @@ public class SimulationConfigStoreTests
         store.ReplaceConfig(replacement);
 
         Assert.Same(replacement, store.Config);
-        Assert.False(store.CanUndo);
-        Assert.False(store.CanRedo);
+        Assert.True(store.CanUndo);
         Assert.Equal(1, changed);
     }
 
 
     [Fact]
-    public void CaptureRestoreState_RestoresConfigAndUndoRedo()
+    public void CaptureRestoreState_RestoresConfigOnly()
     {
         var rectangle = AddRectangle();
         var store = CreateStore();
         AddLinearTrack(store, rectangle, "PosX");
-        store.Undo();
         store.SetLoop(true);
 
         var state = store.CaptureState();
         store.ReplaceConfig(SimulationConfig.Empty);
-        Assert.False(store.CanUndo);
-        Assert.False(store.CanRedo);
+        Assert.True(store.CanUndo);
 
         store.RestoreState(state);
 
         Assert.True(store.Config.Loop);
         var track = Assert.Single(store.Config.Tracks);
-        Assert.Equal(10f, track.Keyframes[1].Value);
+        Assert.Equal(100f, track.Keyframes[1].Value);
         Assert.True(store.CanUndo);
-        Assert.True(store.CanRedo);
-
-        store.Redo();
-        Assert.Equal(100f, Assert.Single(store.Config.Tracks).Keyframes[1].Value);
-
-        store.Undo();
-        Assert.Equal(10f, Assert.Single(store.Config.Tracks).Keyframes[1].Value);
     }
 
     private SimulationConfigStore CreateStore() => new(_service);

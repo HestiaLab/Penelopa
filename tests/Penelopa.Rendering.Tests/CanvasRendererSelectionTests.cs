@@ -1,6 +1,7 @@
 using Penelopa.Core.Alignment;
 using Penelopa.Core.Interaction;
 using Penelopa.Core.Primitives;
+using Penelopa.Core.Simulation;
 using Penelopa.Rendering;
 using SkiaSharp;
 using Xunit;
@@ -88,6 +89,44 @@ public class CanvasRendererSelectionTests
 
         Assert.Null(hit.Primitive);
         Assert.True(hit.InUnionBox);
+    }
+
+    [Fact]
+    public void HitTestSelection_UsesEffectiveValuesForBufferAndSelectionBounds()
+    {
+        var renderer = new CanvasRenderer();
+        var circle = new Circle
+        {
+            CenterX = { Value = 10f },
+            CenterY = { Value = 10f },
+            Radius = { Value = 5f },
+        };
+        var overlay = new SimulationOverlay();
+        overlay.Set(circle.CenterX, 50f);
+        overlay.Set(circle.CenterY, 50f);
+        var selection = new[] { circle };
+        renderer.Render(
+            NewSurface(),
+            NewInfo(),
+            1f,
+            selection,
+            selection,
+            effectiveValues: overlay);
+
+        var oldPosition = renderer.HitTestSelection(
+            Center + 10f,
+            Center - 10f,
+            selection,
+            overlay);
+        Assert.Null(oldPosition.Primitive);
+
+        var effectivePosition = renderer.HitTestSelection(
+            Center + 50f,
+            Center - 50f,
+            selection,
+            overlay);
+        Assert.Null(effectivePosition.Handle);
+        Assert.Same(circle, effectivePosition.Primitive);
     }
 
     public enum TinyShape

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using Penelopa.Web.Components;
@@ -11,7 +12,7 @@ using Xunit;
 
 namespace Penelopa.Web.Tests;
 
-public class ToolPanelTests : TestContext
+public class ToolPanelTests : BunitContext
 {
     private readonly PrimitiveService _service;
 
@@ -19,13 +20,16 @@ public class ToolPanelTests : TestContext
     {
         _service = new PrimitiveService();
         Services.AddSingleton<IPrimitiveService>(_service);
+        Services.AddSingleton<DocumentEditor>();
         Services.AddSingleton<SimulationConfigStore>();
         Services.AddSingleton<DocumentStorage>();
+        Services.AddSingleton<DocumentJournalService>();
         Services.AddSingleton<DocumentImportRollbackService>();
         Services.AddSingleton<DocumentFileService>(sp => new DocumentFileService(
             new HttpClient(),
             _service,
-            sp.GetRequiredService<SimulationConfigStore>()));
+            sp.GetRequiredService<SimulationConfigStore>(),
+            sp.GetRequiredService<DocumentEditor>()));
         JSInterop.Mode = JSRuntimeMode.Loose;
         JSInterop.Setup<StorageReadResult>("penelopa.readStorage", _ => true)
             .SetResult(new StorageReadResult(true, null, null));
@@ -42,12 +46,42 @@ public class ToolPanelTests : TestContext
                 "penelopa.readStorage",
                 DocumentStorage.StorageKey)
             .SetResult(new StorageReadResult(true, "not json", null));
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Load").Click();
 
         cut.WaitForAssertion(() => Assert.Contains("invalid or unsupported", cut.Markup));
         Assert.Contains(circle, _service.GetAll());
+    }
+
+    [Fact]
+    public void Load_ValidDocument_RestoresDocumentIdentityAndExtensions()
+    {
+        _service.Add(new Circle());
+        var documentId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+        using var extensions = JsonDocument.Parse("""{"acme.plugin":{"enabled":true}}""");
+        var json = DocumentSerializer.Serialize(
+            new Primitive[] { new Rectangle { Name = { Value = "Identified" } } },
+            Array.Empty<Primitive>(),
+            documentId: documentId,
+            revision: 12,
+            extensions: new Dictionary<string, JsonElement>
+            {
+                ["acme.plugin"] = extensions.RootElement.GetProperty("acme.plugin").Clone(),
+            });
+        JSInterop.Setup<StorageReadResult>(
+                "penelopa.readStorage",
+                DocumentStorage.StorageKey)
+            .SetResult(new StorageReadResult(true, json, null));
+        var cut = Render<ToolPanel>();
+
+        FindButton(cut, "Load").Click();
+        cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Replace"));
+        FindButton(cut, "Replace").Click();
+
+        Assert.Equal(documentId, _service.DocumentId);
+        Assert.Equal(12, _service.Revision);
+        Assert.True(_service.Extensions.ContainsKey("acme.plugin"));
     }
 
     [Fact]
@@ -61,7 +95,7 @@ public class ToolPanelTests : TestContext
                 "penelopa.readStorage",
                 DocumentStorage.StorageKey)
             .SetResult(new StorageReadResult(true, json, null));
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Load").Click();
 
@@ -87,7 +121,7 @@ public class ToolPanelTests : TestContext
                 "penelopa.readStorage",
                 DocumentStorage.StorageKey)
             .SetResult(new StorageReadResult(true, json, null));
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Load").Click();
         cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Cancel"));
@@ -104,7 +138,7 @@ public class ToolPanelTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         var delete = FindButton(cut, "Delete");
         Assert.False(delete.HasAttribute("disabled"));
@@ -121,7 +155,7 @@ public class ToolPanelTests : TestContext
     public void DeleteButton_IsDisabledWithoutSelection()
     {
         _service.Add(new Circle());
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         Assert.True(FindButton(cut, "Delete").HasAttribute("disabled"));
     }
@@ -133,7 +167,7 @@ public class ToolPanelTests : TestContext
         var second = new Rectangle();
         _service.Add(first);
         _service.Add(second);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         Assert.True(FindButton(cut, "Group").HasAttribute("disabled"));
         Assert.True(FindButton(cut, "Ungroup").HasAttribute("disabled"));
@@ -155,7 +189,7 @@ public class ToolPanelTests : TestContext
         _service.Add(first);
         _service.Add(second);
         _service.SetSelectedRange(new Primitive[] { first, second });
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         var group = FindButton(cut, "Group");
         Assert.False(group.HasAttribute("disabled"));
@@ -189,7 +223,7 @@ public class ToolPanelTests : TestContext
         container.AddChild(child);
         _service.Add(container);
         _service.SetSelected(child);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         Assert.True(FindButton(cut, "Group").HasAttribute("disabled"));
         Assert.True(FindButton(cut, "Ungroup").HasAttribute("disabled"));
@@ -211,6 +245,20 @@ public class ToolPanelTests : TestContext
     }
 
     [Fact]
+    public void Save_DoesNotClearDocumentHistory()
+    {
+        var circle = new Circle();
+        _service.Add(circle);
+        var cut = Render<ToolPanel>();
+
+        FindButton(cut, "Save").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Document saved.", cut.Markup));
+        Assert.True(_service.CanUndo);
+        Assert.Equal(1, _service.UndoDepth);
+    }
+
+    [Fact]
     public void Save_BacksUpPreviousDocument()
     {
         _service.Add(new Circle());
@@ -218,7 +266,7 @@ public class ToolPanelTests : TestContext
                 "penelopa.readStorage",
                 DocumentStorage.StorageKey)
             .SetResult(new StorageReadResult(true, "previous-document", null));
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Save").Click();
 
@@ -243,7 +291,7 @@ public class ToolPanelTests : TestContext
         Assert.True(
             store.TryAddTrack(rectangle.Id, "PosX", 0d, 10f, out var trackError),
             trackError);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Save").Click();
 
@@ -272,7 +320,7 @@ public class ToolPanelTests : TestContext
             store.TryAddTrack(rectangle.Id, "PosX", 0d, 10f, out var trackError),
             trackError);
         _service.Remove(rectangle);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Save").Click();
 
@@ -332,7 +380,7 @@ public class ToolPanelTests : TestContext
                 "penelopa.readStorage",
                 DocumentStorage.StorageKey)
             .SetResult(new StorageReadResult(true, json, null));
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Load").Click();
 
@@ -349,7 +397,7 @@ public class ToolPanelTests : TestContext
     }
 
     [Fact]
-    public void Save_AfterVersionOneStorage_BacksUpLegacyPayloadAndWritesVersionTwo()
+    public void Save_AfterVersionOneStorage_BacksUpLegacyPayloadAndWritesVersionThree()
     {
         const string legacyJson = @"{
           ""Version"": 1,
@@ -363,7 +411,7 @@ public class ToolPanelTests : TestContext
                 DocumentStorage.StorageKey)
             .SetResult(new StorageReadResult(true, legacyJson, null));
         _service.Add(new Circle());
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Save").Click();
 
@@ -378,7 +426,7 @@ public class ToolPanelTests : TestContext
             invocation => invocation.Identifier == "penelopa.writeStorage"
                 && Equals(invocation.Arguments[0], DocumentStorage.StorageKey));
         using var document = JsonDocument.Parse((string)write.Arguments[1]!);
-        Assert.Equal(2, document.RootElement.GetProperty("Version").GetInt32());
+        Assert.Equal(3, document.RootElement.GetProperty("Version").GetInt32());
     }
 
     [Fact]
@@ -408,7 +456,7 @@ public class ToolPanelTests : TestContext
                 "penelopa.readStorage",
                 DocumentStorage.StorageKey)
             .SetResult(new StorageReadResult(true, json, null));
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Load").Click();
         cut.WaitForAssertion(() => Assert.Contains(
@@ -451,7 +499,7 @@ public class ToolPanelTests : TestContext
                 "penelopa.readStorage",
                 DocumentStorage.StorageKey)
             .SetResult(new StorageReadResult(true, json, null));
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Save").Click();
         cut.WaitForAssertion(() => Assert.Contains(
@@ -503,7 +551,7 @@ public class ToolPanelTests : TestContext
             store.TryAddTrack(activePrimitive.Id, "PosY", 0d, 20f, out var secondError),
             secondError);
         _service.Remove(dormantPrimitive);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Save").Click();
         cut.WaitForAssertion(() => Assert.Contains(
@@ -543,7 +591,7 @@ public class ToolPanelTests : TestContext
             store.TryAddTrack(second.Id, "PosY", 0d, 20f, out var secondError),
             secondError);
         _service.Remove(first);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Save").Click();
         cut.WaitForAssertion(() => Assert.Contains(
@@ -579,7 +627,7 @@ public class ToolPanelTests : TestContext
         var json = DocumentSerializer.Serialize(
             new Primitive[] { loaded },
             new Primitive[] { loaded });
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
@@ -622,7 +670,7 @@ public class ToolPanelTests : TestContext
         var json = DocumentSerializer.Serialize(
             new Primitive[] { imported },
             new Primitive[] { imported });
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
         cut.WaitForAssertion(() => Assert.Contains(
@@ -657,7 +705,7 @@ public class ToolPanelTests : TestContext
         var json = DocumentSerializer.Serialize(
             new Primitive[] { imported },
             new Primitive[] { imported });
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
         cut.WaitForAssertion(() => Assert.Contains(
@@ -684,7 +732,7 @@ public class ToolPanelTests : TestContext
     {
         var original = new Circle { Name = { Value = "A" } };
         _service.Add(original);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         var second = new Rectangle { Name = { Value = "B" } };
         var secondJson = DocumentSerializer.Serialize(
@@ -732,7 +780,7 @@ public class ToolPanelTests : TestContext
         var json = DocumentSerializer.Serialize(
             new Primitive[] { imported },
             new Primitive[] { imported });
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
         cut.WaitForAssertion(() => Assert.Contains(
@@ -756,7 +804,7 @@ public class ToolPanelTests : TestContext
     {
         var existing = new Circle();
         _service.Add(existing);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText("not json", "scene.penelopa.json"));
@@ -771,7 +819,7 @@ public class ToolPanelTests : TestContext
     [Fact]
     public void Import_RejectsMultipleFiles()
     {
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         var json = DocumentSerializer.Serialize(
             new Primitive[] { new Circle() },
             Array.Empty<Primitive>());
@@ -801,7 +849,7 @@ public class ToolPanelTests : TestContext
         var json = DocumentSerializer.Serialize(
             new Primitive[] { new Rectangle() },
             Array.Empty<Primitive>());
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
         cut.WaitForAssertion(() => Assert.Contains(
@@ -828,7 +876,7 @@ public class ToolPanelTests : TestContext
             new Primitive[] { new Rectangle() },
             Array.Empty<Primitive>());
         var store = Services.GetRequiredService<SimulationConfigStore>();
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
         cut.WaitForAssertion(() => Assert.Contains(
@@ -859,7 +907,7 @@ public class ToolPanelTests : TestContext
         var json = DocumentSerializer.Serialize(
             new Primitive[] { new Rectangle() },
             Array.Empty<Primitive>());
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
         cut.WaitForAssertion(() => Assert.Contains(
@@ -882,7 +930,7 @@ public class ToolPanelTests : TestContext
         var json = DocumentSerializer.Serialize(
             new Primitive[] { new Rectangle() },
             Array.Empty<Primitive>());
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText(json, "scene.penelopa.json"));
         cut.WaitForAssertion(() => Assert.Contains(
@@ -908,7 +956,7 @@ public class ToolPanelTests : TestContext
         Assert.True(
             store.TryAddTrack(rectangle.Id, "PosX", 0d, 10f, out var trackError),
             trackError);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Export file…").Click();
 
@@ -921,7 +969,7 @@ public class ToolPanelTests : TestContext
         Assert.StartsWith("penelopa-", fileName);
         Assert.EndsWith(".penelopa.json", fileName);
         using var document = JsonDocument.Parse(json);
-        Assert.Equal(2, document.RootElement.GetProperty("Version").GetInt32());
+        Assert.Equal(3, document.RootElement.GetProperty("Version").GetInt32());
         var track = Assert.Single(
             document.RootElement.GetProperty("Simulation").GetProperty("Tracks")
                 .EnumerateArray());
@@ -942,7 +990,7 @@ public class ToolPanelTests : TestContext
         Assert.True(store.TryAddTrack(active.Id, "PosX", 0d, 10f, out var firstError), firstError);
         Assert.True(store.TryAddTrack(dormant.Id, "PosX", 0d, 20f, out var secondError), secondError);
         _service.Remove(dormant);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Export file…").Click();
 
@@ -979,9 +1027,9 @@ public class ToolPanelTests : TestContext
     }
 
     [Fact]
-    public void Export_EmptyDocument_DownloadsEmptyVersionTwoFile()
+    public void Export_EmptyDocument_DownloadsEmptyVersionThreeFile()
     {
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
         var export = FindButton(cut, "Export file…");
         Assert.False(export.HasAttribute("disabled"));
 
@@ -994,7 +1042,7 @@ public class ToolPanelTests : TestContext
         var json = Assert.IsType<string>(invocation.Arguments[1]);
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        Assert.Equal(2, root.GetProperty("Version").GetInt32());
+        Assert.Equal(3, root.GetProperty("Version").GetInt32());
         Assert.Empty(root.GetProperty("Primitives").EnumerateArray());
         Assert.Empty(root.GetProperty("SelectionIds").EnumerateArray());
         Assert.Empty(
@@ -1014,7 +1062,7 @@ public class ToolPanelTests : TestContext
             store.TryAddTrack(removed.Id, "PosX", 0d, 10f, out var trackError),
             trackError);
         _service.Remove(removed);
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         FindButton(cut, "Export file…").Click();
 
@@ -1034,7 +1082,7 @@ public class ToolPanelTests : TestContext
                 candidate => candidate.Identifier == "penelopa.downloadTextFile");
             var json = Assert.IsType<string>(invocation.Arguments[1]);
             using var document = JsonDocument.Parse(json);
-            Assert.Equal(2, document.RootElement.GetProperty("Version").GetInt32());
+            Assert.Equal(3, document.RootElement.GetProperty("Version").GetInt32());
             Assert.Empty(
                 document.RootElement.GetProperty("Primitives").EnumerateArray());
             Assert.Empty(
@@ -1053,7 +1101,7 @@ public class ToolPanelTests : TestContext
         var json = DocumentSerializer.Serialize(
             new Primitive[] { imported },
             Array.Empty<Primitive>());
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         var label = cut.Find("#penelopa-import-file-control");
         Assert.Contains("Import file…", label.TextContent);
@@ -1081,7 +1129,7 @@ public class ToolPanelTests : TestContext
     [Fact]
     public void Import_ErrorMessage_UsesAlertRole()
     {
-        var cut = RenderComponent<ToolPanel>();
+        var cut = Render<ToolPanel>();
 
         cut.FindComponent<InputFile>()
             .UploadFiles(InputFileContent.CreateFromText("not json", "scene.penelopa.json"));
@@ -1094,6 +1142,38 @@ public class ToolPanelTests : TestContext
         });
     }
 
-    private static AngleSharp.Dom.IElement FindButton(IRenderedFragment cut, string text)
+    [Fact]
+    public async Task PendingLoad_IsCanceledWhenActiveStorageKeyChanges()
+    {
+        var saved = DocumentSerializer.Serialize(
+            new Primitive[] { new Circle { Name = { Value = "Saved" } } },
+            Array.Empty<Primitive>(),
+            documentId: Guid.Parse("99999999-9999-9999-9999-999999999999"),
+            revision: 1);
+        JSInterop.Setup<StorageReadResult>(
+                "penelopa.readStorage",
+                DocumentStorage.StorageKey)
+            .SetResult(new StorageReadResult(true, saved, null));
+        var cut = Render<ToolPanel>();
+        FindButton(cut, "Load").Click();
+        cut.WaitForAssertion(() => Assert.Contains(
+            "Replace",
+            cut.Markup));
+
+        var storage = Services.GetRequiredService<DocumentStorage>();
+        storage.SetActiveKey("penelopa.document.other");
+        await cut.InvokeAsync(() => _service.ClearSelection());
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain(
+                cut.FindAll("button"),
+                button => button.TextContent.Trim() == "Replace");
+            Assert.Contains("active document changed", cut.Markup);
+        });
+    }
+
+    private static AngleSharp.Dom.IElement FindButton<TComponent>(IRenderedComponent<TComponent> cut, string text)
+        where TComponent : IComponent
         => cut.FindAll("button").Single(b => b.TextContent.Trim() == text);
 }
