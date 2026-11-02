@@ -45,7 +45,7 @@ The simulation workspace plays the bundled 9-second Loop Study 01 sample with fi
 
 ## Quick start
 
-Requirements: .NET 10 SDK (`global.json` pins 10.0.401 with `rollForward: latestFeature`) and the `wasm-tools` workload. Node.js is optional for a plain .NET build and is required only for the TypeScript and Playwright test suites.
+Requirements: .NET 10 SDK (`global.json` pins 10.0.401 with `rollForward: disable`) and the `wasm-tools` workload. Node.js is optional for a plain .NET build and is required only for the TypeScript and Playwright test suites.
 
 ```sh
 dotnet workload install wasm-tools

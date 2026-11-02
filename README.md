@@ -45,7 +45,7 @@ Penelopa 在可停靠工作区中提供 SkiaSharp 画布、图元树、六方向
 
 ## 快速开始
 
-环境要求：.NET 10 SDK（`global.json` 固定 10.0.401，`rollForward: latestFeature`）与 `wasm-tools` workload。普通 .NET 构建不要求 Node.js；只有 TypeScript 与 Playwright 测试需要 Node。
+环境要求：.NET 10 SDK（`global.json` 固定 10.0.401，`rollForward: disable`）与 `wasm-tools` workload。普通 .NET 构建不要求 Node.js；只有 TypeScript 与 Playwright 测试需要 Node。
 
 ```sh
 dotnet workload install wasm-tools
