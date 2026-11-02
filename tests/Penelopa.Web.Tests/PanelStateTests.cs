@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Penelopa.Web.Components;
 using Penelopa.Core.Primitives;
@@ -7,7 +8,7 @@ using Xunit;
 
 namespace Penelopa.Web.Tests;
 
-public class PanelStateTests : TestContext
+public class PanelStateTests : BunitContext
 {
     private readonly PrimitiveService _service;
 
@@ -15,6 +16,7 @@ public class PanelStateTests : TestContext
     {
         _service = new PrimitiveService();
         Services.AddSingleton<IPrimitiveService>(_service);
+        Services.AddSingleton<DocumentEditor>();
     }
 
     [Fact]
@@ -24,7 +26,7 @@ public class PanelStateTests : TestContext
         _service.Add(circle);
         _service.SetSelected(circle);
 
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         Assert.Contains("Circle", cut.Markup);
         Assert.Contains("Radius", cut.Markup);
@@ -36,7 +38,7 @@ public class PanelStateTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
         Assert.Contains("Circle", cut.Markup);
 
         await cut.InvokeAsync(() => _service.ReplaceAll(Array.Empty<Primitive>()));
@@ -53,7 +55,7 @@ public class PanelStateTests : TestContext
         _service.Add(circle);
         _service.Add(rectangle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         await cut.InvokeAsync(() => _service.SetSelected(rectangle));
 
@@ -67,7 +69,7 @@ public class PanelStateTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         RadiusInput(cut).Change("20");
 
@@ -76,12 +78,28 @@ public class PanelStateTests : TestContext
     }
 
     [Fact]
+    public void PropertyPanel_EachCommittedEditStartsANewHistoryEntry()
+    {
+        var circle = new Circle();
+        _service.Add(circle);
+        _service.SetSelected(circle);
+        var cut = Render<PropertyPanel>();
+
+        RadiusInput(cut).Change("20");
+        cut.WaitForAssertion(() => Assert.Equal(20f, circle.Radius.Value));
+        RadiusInput(cut).Change("30");
+        cut.WaitForAssertion(() => Assert.Equal(30f, circle.Radius.Value));
+
+        Assert.Equal(3, _service.UndoDepth);
+    }
+
+    [Fact]
     public void PropertyPanel_AssociatesLabelsAndErrorsWithInputs()
     {
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         var field = Field(cut, "Radius");
         var input = field.QuerySelector("input")!;
@@ -110,7 +128,7 @@ public class PanelStateTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         Field(cut, "Name").QuerySelector("input")!.Change("  Renamed Circle  ");
 
@@ -124,7 +142,7 @@ public class PanelStateTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         Field(cut, "Name").QuerySelector("input")!.Change("Renamed Circle");
         cut.WaitForAssertion(() => Assert.Equal("Renamed Circle", circle.Name.Value));
@@ -142,7 +160,7 @@ public class PanelStateTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         Field(cut, "Name").QuerySelector("input")!.Change("   ");
 
@@ -159,7 +177,7 @@ public class PanelStateTests : TestContext
         _service.Add(rectangle);
         _service.SetSelectedRange(new Primitive[] { circle, rectangle });
 
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         Assert.Equal("2 primitives selected", cut.Find(".penelopa-properties-title").TextContent.Trim());
         Assert.NotNull(FieldOrNull(cut, "Name"));
@@ -177,7 +195,7 @@ public class PanelStateTests : TestContext
         _service.Add(second);
         _service.SetSelectedRange(new Primitive[] { first, second });
 
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         var input = Field(cut, "Name").QuerySelector("input")!;
         Assert.Equal(string.Empty, input.GetAttribute("value"));
@@ -192,7 +210,7 @@ public class PanelStateTests : TestContext
         _service.Add(first);
         _service.Add(second);
         _service.SetSelectedRange(new Primitive[] { first, second });
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         RadiusInput(cut).Change("12");
 
@@ -215,7 +233,7 @@ public class PanelStateTests : TestContext
         _service.Add(first);
         _service.Add(second);
         _service.SetSelectedRange(new Primitive[] { first, second });
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         RadiusInput(cut).Change("-1");
 
@@ -230,7 +248,7 @@ public class PanelStateTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         ColorChannel(cut, "R").Change("0");
 
@@ -244,7 +262,7 @@ public class PanelStateTests : TestContext
         var circle = new Circle();
         _service.Add(circle);
         _service.SetSelected(circle);
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         ColorChannel(cut, "G").Change("256");
 
@@ -267,7 +285,7 @@ public class PanelStateTests : TestContext
         _service.Add(first);
         _service.Add(second);
         _service.SetSelectedRange(new Primitive[] { first, second });
-        var cut = RenderComponent<PropertyPanel>();
+        var cut = Render<PropertyPanel>();
 
         Assert.All(Field(cut, "Color").QuerySelectorAll("input"), input =>
             Assert.Equal(string.Empty, input.GetAttribute("value")));
@@ -298,7 +316,7 @@ public class PanelStateTests : TestContext
         container.AddChild(new Rectangle());
         _service.Add(container);
 
-        var cut = RenderComponent<PrimitiveTreePanel>();
+        var cut = Render<PrimitiveTreePanel>();
 
         var items = cut.FindAll(".penelopa-tree-item");
         Assert.Equal(2, items.Count);
@@ -311,7 +329,7 @@ public class PanelStateTests : TestContext
     {
         var circle = new Circle();
         _service.Add(circle);
-        var cut = RenderComponent<PrimitiveTreePanel>();
+        var cut = Render<PrimitiveTreePanel>();
         Assert.Equal("false", cut.Find(".penelopa-tree-item").GetAttribute("aria-selected"));
 
         await cut.InvokeAsync(() => _service.SetSelected(circle));
@@ -331,7 +349,7 @@ public class PanelStateTests : TestContext
         var rectangle = new Rectangle();
         _service.Add(circle);
         _service.Add(rectangle);
-        var cut = RenderComponent<PrimitiveTreePanel>();
+        var cut = Render<PrimitiveTreePanel>();
 
         await cut.InvokeAsync(() =>
             _service.SetSelectedRange(new Primitive[] { circle, rectangle }));
@@ -348,17 +366,21 @@ public class PanelStateTests : TestContext
         });
     }
 
-    private static AngleSharp.Dom.IElement Field(IRenderedFragment cut, string name)
+    private static AngleSharp.Dom.IElement Field<TComponent>(IRenderedComponent<TComponent> cut, string name)
+        where TComponent : IComponent
         => FieldOrNull(cut, name) ?? throw new InvalidOperationException($"Property field '{name}' was not rendered.");
 
-    private static AngleSharp.Dom.IElement? FieldOrNull(IRenderedFragment cut, string name)
+    private static AngleSharp.Dom.IElement? FieldOrNull<TComponent>(IRenderedComponent<TComponent> cut, string name)
+        where TComponent : IComponent
         => cut.FindAll(".penelopa-prop-field").SingleOrDefault(
             field => field.QuerySelector(".penelopa-prop-label")?.TextContent.Trim() == name);
 
-    private static AngleSharp.Dom.IElement RadiusInput(IRenderedFragment cut)
+    private static AngleSharp.Dom.IElement RadiusInput<TComponent>(IRenderedComponent<TComponent> cut)
+        where TComponent : IComponent
         => Field(cut, "Radius").QuerySelector("input")!;
 
-    private static AngleSharp.Dom.IElement ColorChannel(IRenderedFragment cut, string channel)
+    private static AngleSharp.Dom.IElement ColorChannel<TComponent>(IRenderedComponent<TComponent> cut, string channel)
+        where TComponent : IComponent
         => Field(cut, "Color")
             .QuerySelectorAll(".penelopa-color-channel")
             .Single(element => element.QuerySelector("label")?.TextContent.Trim() == channel)

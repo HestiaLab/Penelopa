@@ -49,7 +49,7 @@ internal static class SimulationWorkspaceDefinition
             timeline.Id);
 
         // 画布占剩余宽度：左树固定 220px，右检视器固定 320px；时间轴通栏固定
-        // 208px。Atlas 0.3.0 的约束只作用于分割条交互，初始固定轨道不会被钳位。
+        // 208px。Atlas 的约束只作用于分割条交互，初始固定轨道不会被钳位。
         var right = Split(
             "right",
             SplitAxis.InlineChildren,

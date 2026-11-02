@@ -10,7 +10,7 @@ namespace Penelopa.Core.Simulation;
 public sealed class SimulationRuntime
 {
     private readonly SimulationPrimitiveIndex _index;
-    private readonly List<(FloatPropValue Property, float Value)> _baseValues = new();
+    private readonly SimulationOverlay _overlay = new();
 
     private SimulationConfig _config;
     private SimulationResolution _resolution;
@@ -46,6 +46,13 @@ public sealed class SimulationRuntime
     public bool Loop => _loop;
 
     public SimulationConfig Config => _config;
+
+    /// <summary>当前会话的临时值层；渲染与读数读取生效值，不写模型。</summary>
+    public SimulationOverlay Overlay => _overlay;
+
+    /// <summary>读取属性的生效值；无 overlay 时返回模型基础值。</summary>
+    public float GetEffectiveValue(Primitive primitive, FloatPropValue property)
+        => _overlay.GetFloat(property, property.Value);
 
     public IReadOnlyList<ResolvedSimulationTrack> ActiveTrackBindings => _resolution.Active;
 
@@ -219,10 +226,10 @@ public sealed class SimulationRuntime
         return TrySeek(_currentTime + delta, out issues);
     }
 
-    /// <summary>结束会话、恢复全部基础值并回到 Ready；配置不变。</summary>
+    /// <summary>结束会话、清空 overlay 并回到 Ready；配置与基础值不变。</summary>
     public void Stop()
     {
-        RestoreBaseValues();
+        _overlay.Clear();
         _hasSession = false;
         State = SimulationState.Ready;
         _currentTime = 0d;
@@ -312,7 +319,11 @@ public sealed class SimulationRuntime
         var values = new Dictionary<SimulationTrackKey, float>(_resolution.Active.Count);
         foreach (var resolved in _resolution.Active)
         {
-            values[resolved.Key] = resolved.Property.Value;
+            values[resolved.Key] = _overlay.TryGet(
+                resolved.Property,
+                out var value)
+                ? value
+                : resolved.Property.Value;
         }
 
         return new SimulationReadout(State, _currentTime, _duration, _loop, values);
@@ -350,12 +361,7 @@ public sealed class SimulationRuntime
             return;
         }
 
-        _baseValues.Clear();
-        foreach (var entry in _index.FloatProperties)
-        {
-            _baseValues.Add((entry.Property, entry.Property.Value));
-        }
-
+        _overlay.Clear();
         _hasSession = true;
     }
 
@@ -366,30 +372,13 @@ public sealed class SimulationRuntime
             return;
         }
 
-        foreach (var (property, baseValue) in _baseValues)
-        {
-            property.Value = baseValue;
-        }
-
+        _overlay.Clear();
         foreach (var resolved in _resolution.Active)
         {
-            resolved.Property.Value = SimulationEvaluator.Evaluate(resolved.Track, time);
+            _overlay.Set(
+                resolved.Property,
+                SimulationEvaluator.Evaluate(resolved.Track, time));
         }
-    }
-
-    private void RestoreBaseValues()
-    {
-        if (!_hasSession)
-        {
-            return;
-        }
-
-        foreach (var (property, baseValue) in _baseValues)
-        {
-            property.Value = baseValue;
-        }
-
-        _baseValues.Clear();
     }
 
     private static SimulationValidationIssue CreateIssue(string message)

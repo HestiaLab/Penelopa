@@ -5,14 +5,12 @@ namespace Penelopa.Core.Simulation;
 
 /// <summary>
 /// 仿真配置的 singleton 存储。轨道/关键帧编辑会创建新的不可变配置并进入
-/// 独立的 50 步撤销栈；Loop 是播放设置，不进入该撤销栈。所有写入都先用
-/// 当前文档解析目标并校验，失败时不改变配置。
+/// 文档统一历史；Loop 是播放设置，不进入历史。所有写入都先用当前文档解析
+/// 目标并校验，失败时不改变配置。
 /// </summary>
-public sealed class SimulationConfigStore
+public sealed class SimulationConfigStore : IHistoryConfigParticipant
 {
-    private readonly IPrimitiveService _primitives;
-    private readonly List<IReadOnlyList<SimulationTrack>> _undo = new();
-    private readonly List<IReadOnlyList<SimulationTrack>> _redo = new();
+    private IPrimitiveService _primitives;
 
     private SimulationConfig _config = SimulationConfig.Empty;
 
@@ -20,13 +18,36 @@ public sealed class SimulationConfigStore
     {
         ArgumentNullException.ThrowIfNull(primitives);
         _primitives = primitives;
+        if (primitives is PrimitiveService concrete)
+        {
+            concrete.AttachConfigHistory(this);
+        }
+    }
+
+    /// <summary>
+    /// 切换到另一个文档会话：替换当前图元服务与配置，并把配置历史挂到新会话。
+    /// 调用方负责在切换前把当前配置保存到旧会话。
+    /// </summary>
+    public void SwitchDocument(IPrimitiveService primitives, SimulationConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(primitives);
+        ArgumentNullException.ThrowIfNull(config);
+
+        _primitives = primitives;
+        _config = config;
+        if (primitives is PrimitiveService concrete)
+        {
+            concrete.AttachConfigHistory(this);
+        }
+
+        Changed?.Invoke();
     }
 
     public SimulationConfig Config => _config;
 
-    public bool CanUndo => _undo.Count > 0;
+    public bool CanUndo => _primitives.CanUndo;
 
-    public bool CanRedo => _redo.Count > 0;
+    public bool CanRedo => _primitives.CanRedo;
 
     public event Action? Changed;
 
@@ -106,7 +127,10 @@ public sealed class SimulationConfigStore
             return false;
         }
 
-        CommitTracks(candidate.Tracks);
+        CommitTracks(
+            candidate.Tracks,
+            DocumentCommands.SetKeyframe,
+            $"Set {propertyName} keyframe");
         error = null;
         return true;
     }
@@ -161,7 +185,10 @@ public sealed class SimulationConfigStore
             return false;
         }
 
-        CommitTracks(candidate.Tracks);
+        CommitTracks(
+            candidate.Tracks,
+            DocumentCommands.AddTrack,
+            $"Add {propertyName} track");
         error = null;
         return true;
     }
@@ -181,7 +208,10 @@ public sealed class SimulationConfigStore
         var remaining = _config.Tracks
             .Where(candidate => candidate.Key != track.Key)
             .ToArray();
-        CommitTracks(remaining);
+        CommitTracks(
+            remaining,
+            DocumentCommands.RemoveTrack,
+            $"Remove {propertyName} track");
         error = null;
         return true;
     }
@@ -254,7 +284,10 @@ public sealed class SimulationConfigStore
             return false;
         }
 
-        CommitTracks(candidate.Tracks);
+        CommitTracks(
+            candidate.Tracks,
+            DocumentCommands.UpdateKeyframe,
+            $"Edit {propertyName} keyframe");
         error = null;
         return true;
     }
@@ -303,7 +336,10 @@ public sealed class SimulationConfigStore
             tracks = candidate.Tracks;
         }
 
-        CommitTracks(tracks);
+        CommitTracks(
+            tracks,
+            DocumentCommands.RemoveKeyframe,
+            $"Remove {propertyName} keyframe");
         error = null;
         return true;
     }
@@ -317,6 +353,7 @@ public sealed class SimulationConfigStore
         }
 
         _config = new SimulationConfig(loop, _config.Tracks);
+        _primitives.MarkConfigurationChanged();
         Changed?.Invoke();
     }
 
@@ -335,7 +372,10 @@ public sealed class SimulationConfigStore
         var remaining = _config.Tracks
             .Where(track => !dormantKeys.Contains(track.Key))
             .ToArray();
-        CommitTracks(remaining);
+        CommitTracks(
+            remaining,
+            DocumentCommands.RemoveDormantTracks,
+            "Remove inactive tracks");
         return resolution.Dormant.Count;
     }
 
@@ -377,69 +417,41 @@ public sealed class SimulationConfigStore
         return SimulationResolver.Resolve(_config, index).Dormant.ToArray();
     }
 
-    /// <summary>加载文档时整体替换配置，并清空配置撤销栈。</summary>
+    /// <summary>加载/导入时整体替换配置（含 Loop）；统一历史由文档替换负责重置。</summary>
     public void ReplaceConfig(SimulationConfig config)
     {
         ArgumentNullException.ThrowIfNull(config);
         _config = config;
-        _undo.Clear();
-        _redo.Clear();
         Changed?.Invoke();
     }
 
-    /// <summary>捕获当前配置与完整配置撤销/重做栈。</summary>
-    public SimulationConfigState CaptureState()
-        => new(_config, _undo.ToArray(), _redo.ToArray());
+    /// <summary>捕获当前配置（供导入回滚的独立状态使用）。</summary>
+    public SimulationConfigState CaptureState() => new(_config);
 
-    /// <summary>恢复配置、Loop 与配置撤销/重做栈；会触发一次 Changed。</summary>
+    /// <summary>恢复完整配置（含 Loop）；会触发一次 Changed。</summary>
     public void RestoreState(SimulationConfigState state)
     {
         ArgumentNullException.ThrowIfNull(state);
         _config = state.Config;
-        _undo.Clear();
-        _undo.AddRange(state.Undo);
-        _redo.Clear();
-        _redo.AddRange(state.Redo);
         Changed?.Invoke();
     }
 
-    /// <summary>清空配置撤销/重做历史，但保留当前配置（进入仿真页时使用）。</summary>
-    public void ClearHistory()
-    {
-        _undo.Clear();
-        _redo.Clear();
-    }
+    /// <summary>撤销统一历史中的最近动作（可能是文档或配置编辑）。</summary>
+    public void Undo() => _primitives.Undo();
 
-    public void Undo()
-    {
-        if (_undo.Count == 0)
-        {
-            return;
-        }
+    public void Redo() => _primitives.Redo();
 
-        var previous = _undo[_undo.Count - 1];
-        _undo.RemoveAt(_undo.Count - 1);
-        _redo.Add(_config.Tracks);
-        _config = new SimulationConfig(_config.Loop, previous);
+    SimulationConfig IHistoryConfigParticipant.GetConfigForHistory() => _config;
+
+    void IHistoryConfigParticipant.ApplyConfigFromHistory(SimulationConfig config)
+    {
+        _config = new SimulationConfig(_config.Loop, config.Tracks);
         Changed?.Invoke();
     }
 
-    public void Redo()
+    void IHistoryConfigParticipant.RestoreConfigState(SimulationConfig config)
     {
-        if (_redo.Count == 0)
-        {
-            return;
-        }
-
-        var next = _redo[_redo.Count - 1];
-        _redo.RemoveAt(_redo.Count - 1);
-        _undo.Add(_config.Tracks);
-        if (_undo.Count > SimulationLimits.ConfigUndoDepth)
-        {
-            _undo.RemoveAt(0);
-        }
-
-        _config = new SimulationConfig(_config.Loop, next);
+        _config = config;
         Changed?.Invoke();
     }
 
@@ -490,17 +502,24 @@ public sealed class SimulationConfigStore
         return true;
     }
 
-    private void CommitTracks(IReadOnlyList<SimulationTrack> tracks)
+    private void CommitTracks(
+        IReadOnlyList<SimulationTrack> tracks,
+        string commandId,
+        string label)
     {
-        _undo.Add(_config.Tracks);
-        if (_undo.Count > SimulationLimits.ConfigUndoDepth)
+        _primitives.BeginTransaction(commandId, label);
+        try
         {
-            _undo.RemoveAt(0);
+            _config = new SimulationConfig(_config.Loop, tracks);
+            Changed?.Invoke();
+        }
+        catch
+        {
+            _primitives.CancelTransaction();
+            throw;
         }
 
-        _redo.Clear();
-        _config = new SimulationConfig(_config.Loop, tracks);
-        Changed?.Invoke();
+        _primitives.CommitTransaction();
     }
 
     private static bool TryValidateTime(double time, out string? error)
@@ -538,19 +557,10 @@ public sealed class SimulationConfigStore
 /// <summary>仿真配置的一次性完整快照；内容对调用方不透明。</summary>
 public sealed class SimulationConfigState
 {
-    internal SimulationConfigState(
-        SimulationConfig config,
-        IReadOnlyList<IReadOnlyList<SimulationTrack>> undo,
-        IReadOnlyList<IReadOnlyList<SimulationTrack>> redo)
+    internal SimulationConfigState(SimulationConfig config)
     {
         Config = config;
-        Undo = undo;
-        Redo = redo;
     }
 
     internal SimulationConfig Config { get; }
-
-    internal IReadOnlyList<IReadOnlyList<SimulationTrack>> Undo { get; }
-
-    internal IReadOnlyList<IReadOnlyList<SimulationTrack>> Redo { get; }
 }

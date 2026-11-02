@@ -1,5 +1,7 @@
 using Penelopa.Core.Alignment;
 using Penelopa.Core.Primitives;
+using Penelopa.Core.Services;
+using Penelopa.Core.Simulation;
 using SkiaSharp;
 
 namespace Penelopa.Rendering;
@@ -24,9 +26,7 @@ internal sealed class ScenePainter : IDisposable
         IsAntialias = false,
     };
 
-    private readonly SKPath _trianglePath = new();
-    private readonly SKPath _xArrowPath = new();
-    private readonly SKPath _yArrowPath = new();
+    private readonly SKPathBuilder _pathBuilder = new();
 
     private readonly SKPaint _axisPaint = new()
     {
@@ -67,7 +67,8 @@ internal sealed class ScenePainter : IDisposable
         ViewTransform view,
         IReadOnlyList<Primitive> primitives,
         HitTestBuffer? hitBuffer,
-        bool drawAxes = true)
+        bool drawAxes = true,
+        IEffectiveValueSource? effectiveValues = null)
     {
         // 坐标轴在屏幕空间绘制：缩放/平移只移动原点，轴线始终跨越整个可见视口。
         // 先于图元绘制以保持轴位于内容下方，且不进入命中缓冲区。只读展示
@@ -102,7 +103,7 @@ internal sealed class ScenePainter : IDisposable
             hitBuffer?.BeginFrame();
             foreach (var primitive in primitives)
             {
-                DrawNode(canvas, hitCanvas, primitive, hitBuffer);
+                DrawNode(canvas, hitCanvas, primitive, hitBuffer, effectiveValues);
             }
         }
         finally
@@ -123,26 +124,27 @@ internal sealed class ScenePainter : IDisposable
         SKCanvas canvas,
         SKCanvas? hitCanvas,
         Primitive node,
-        HitTestBuffer? hitBuffer)
+        HitTestBuffer? hitBuffer,
+        IEffectiveValueSource? effectiveValues)
     {
         if (node is Container container)
         {
-            var matrix = ToSkMatrix(container.LocalTransform);
+            var matrix = ToSkMatrix(container.GetLocalTransform(effectiveValues));
             canvas.Save();
             if (hitCanvas is not null)
             {
                 hitCanvas.Save();
             }
 
-            canvas.Concat(ref matrix);
+            canvas.Concat(in matrix);
             if (hitCanvas is not null)
             {
-                hitCanvas.Concat(ref matrix);
+                hitCanvas.Concat(in matrix);
             }
 
             foreach (var child in container.Children)
             {
-                DrawNode(canvas, hitCanvas, child, hitBuffer);
+                DrawNode(canvas, hitCanvas, child, hitBuffer, effectiveValues);
             }
 
             canvas.Restore();
@@ -155,50 +157,18 @@ internal sealed class ScenePainter : IDisposable
         }
 
         var hasHit = hitCanvas is not null && hitBuffer is not null;
-        switch (node)
+        if (!PrimitiveTypeRegistry.Default.TryResolveTypeId(node, out var typeId)
+            || !PrimitiveRendererRegistry.Default.TryGet(typeId, out var renderer))
         {
-            case Circle circle:
-                _visibleFill.Color = new SKColor(circle.Color.Value);
-                canvas.DrawCircle(circle.CenterX.Value, circle.CenterY.Value, circle.Radius.Value, _visibleFill);
-                if (hasHit)
-                {
-                    _hitFill.Color = ToHitColor(hitBuffer!.Register(circle));
-                    hitCanvas!.DrawCircle(circle.CenterX.Value, circle.CenterY.Value, circle.Radius.Value, _hitFill);
-                }
+            return;
+        }
 
-                break;
-
-            case Rectangle rectangle:
-                var rect = new SKRect(
-                    rectangle.PosX.Value,
-                    rectangle.PosY.Value,
-                    rectangle.PosX.Value + rectangle.Width.Value,
-                    rectangle.PosY.Value + rectangle.Height.Value);
-                _visibleFill.Color = new SKColor(rectangle.Color.Value);
-                canvas.DrawRect(rect, _visibleFill);
-                if (hasHit)
-                {
-                    _hitFill.Color = ToHitColor(hitBuffer!.Register(rectangle));
-                    hitCanvas!.DrawRect(rect, _hitFill);
-                }
-
-                break;
-
-            case Triangle triangle:
-                _trianglePath.Reset();
-                _trianglePath.MoveTo(triangle.Vertex1X.Value, triangle.Vertex1Y.Value);
-                _trianglePath.LineTo(triangle.Vertex2X.Value, triangle.Vertex2Y.Value);
-                _trianglePath.LineTo(triangle.Vertex3X.Value, triangle.Vertex3Y.Value);
-                _trianglePath.Close();
-                _visibleFill.Color = new SKColor(triangle.Color.Value);
-                canvas.DrawPath(_trianglePath, _visibleFill);
-                if (hasHit)
-                {
-                    _hitFill.Color = ToHitColor(hitBuffer!.Register(triangle));
-                    hitCanvas!.DrawPath(_trianglePath, _hitFill);
-                }
-
-                break;
+        _visibleFill.Color = renderer.GetColor(node);
+        renderer.Draw(canvas, node, _visibleFill, effectiveValues);
+        if (hasHit)
+        {
+            _hitFill.Color = ToHitColor(hitBuffer!.Register(node));
+            renderer.Draw(hitCanvas!, node, _hitFill, effectiveValues);
         }
     }
 
@@ -263,35 +233,40 @@ internal sealed class ScenePainter : IDisposable
         float margin = 4f * dpr;
         float arrowSize = 8f * dpr;
         _textFont.Size = 12f * dpr;
-        _textPaint.TextSize = 12f * dpr;
 
         if (xAxisVisible)
         {
             float arrowX = width - margin;
-            _xArrowPath.Reset();
-            _xArrowPath.MoveTo(arrowX, origin.Y);
-            _xArrowPath.LineTo(arrowX - arrowSize, origin.Y - arrowSize * 0.6f);
-            _xArrowPath.LineTo(arrowX - arrowSize, origin.Y + arrowSize * 0.6f);
-            _xArrowPath.Close();
-            canvas.DrawPath(_xArrowPath, _arrowPaint);
+            _pathBuilder.Reset();
+            _pathBuilder.MoveTo(arrowX, origin.Y);
+            _pathBuilder.LineTo(arrowX - arrowSize, origin.Y - arrowSize * 0.6f);
+            _pathBuilder.LineTo(arrowX - arrowSize, origin.Y + arrowSize * 0.6f);
+            _pathBuilder.Close();
+            using (var arrowPath = _pathBuilder.Detach())
+            {
+                canvas.DrawPath(arrowPath, _arrowPaint);
+            }
 
             float labelY = Math.Clamp(origin.Y + 16f * dpr, 16f * dpr, height - margin);
-            float labelX = width - margin - arrowSize - _textPaint.MeasureText("X");
-            canvas.DrawText("X", labelX, labelY, _textFont, _textPaint);
+            float labelX = width - margin - arrowSize - _textFont.MeasureText("X", _textPaint);
+            canvas.DrawText("X", labelX, labelY, SKTextAlign.Left, _textFont, _textPaint);
         }
 
         if (yAxisVisible)
         {
             float arrowY = margin;
-            _yArrowPath.Reset();
-            _yArrowPath.MoveTo(origin.X, arrowY);
-            _yArrowPath.LineTo(origin.X - arrowSize * 0.6f, arrowY + arrowSize);
-            _yArrowPath.LineTo(origin.X + arrowSize * 0.6f, arrowY + arrowSize);
-            _yArrowPath.Close();
-            canvas.DrawPath(_yArrowPath, _arrowPaint);
+            _pathBuilder.Reset();
+            _pathBuilder.MoveTo(origin.X, arrowY);
+            _pathBuilder.LineTo(origin.X - arrowSize * 0.6f, arrowY + arrowSize);
+            _pathBuilder.LineTo(origin.X + arrowSize * 0.6f, arrowY + arrowSize);
+            _pathBuilder.Close();
+            using (var arrowPath = _pathBuilder.Detach())
+            {
+                canvas.DrawPath(arrowPath, _arrowPaint);
+            }
 
             float labelX = Math.Clamp(origin.X + 8f * dpr, margin, width - 16f * dpr);
-            canvas.DrawText("Y", labelX, 16f * dpr, _textFont, _textPaint);
+            canvas.DrawText("Y", labelX, 16f * dpr, SKTextAlign.Left, _textFont, _textPaint);
         }
     }
 
@@ -305,9 +280,7 @@ internal sealed class ScenePainter : IDisposable
         _disposed = true;
         _visibleFill.Dispose();
         _hitFill.Dispose();
-        _trianglePath.Dispose();
-        _xArrowPath.Dispose();
-        _yArrowPath.Dispose();
+        _pathBuilder.Dispose();
         _axisPaint.Dispose();
         _arrowPaint.Dispose();
         _textPaint.Dispose();

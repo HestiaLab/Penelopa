@@ -602,7 +602,7 @@ test('responsive widths keep the canvas usable and controls reachable', async ({
   }
 });
 
-test('Atlas 0.3.0 initial proportional tracks are not clamped to the split minimum', async ({ page }) => {
+test('Atlas initial proportional tracks are not clamped to the split minimum', async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await ready(page);
 

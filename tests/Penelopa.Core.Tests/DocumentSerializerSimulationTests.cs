@@ -68,7 +68,7 @@ public class DocumentSerializerSimulationTests
             Array.Empty<Primitive>());
 
         using var document = JsonDocument.Parse(json);
-        Assert.Equal(2, document.RootElement.GetProperty("Version").GetInt32());
+        Assert.Equal(3, document.RootElement.GetProperty("Version").GetInt32());
         Assert.False(document.RootElement.TryGetProperty("Simulation", out _));
     }
 
@@ -78,7 +78,7 @@ public class DocumentSerializerSimulationTests
         const string json = @"{
           ""Version"": 1,
           ""Primitives"": [
-            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" }
           ],
           ""Simulation"": { ""Loop"": true, ""Tracks"": [ { ""PrimitiveId"": ""bad"" } ] },
           ""SelectionIds"": []
@@ -367,9 +367,9 @@ public class DocumentSerializerSimulationTests
     }
 
     [Theory]
-    [InlineData(@"{ ""Version"": 2, ""Primitives"": [null], ""SelectionIds"": [] }")]
-    [InlineData(@"{ ""Version"": 2, ""Primitives"": [{ ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Container"", ""Kind"": ""Offset"", ""Children"": [null] }], ""SelectionIds"": [] }")]
-    [InlineData(@"{ ""Version"": 2, ""Primitives"": [], ""SelectionIds"": [null] }")]
+    [InlineData(@"{ ""Version"": 3, ""Primitives"": [null], ""SelectionIds"": [] }")]
+    [InlineData(@"{ ""Version"": 3, ""Primitives"": [{ ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.container.offset"", ""Children"": [null] }], ""SelectionIds"": [] }")]
+    [InlineData(@"{ ""Version"": 3, ""Primitives"": [], ""SelectionIds"": [null] }")]
     public void Deserialize_NullArrayEntries_ReturnsNullWithoutThrowing(string json)
     {
         var exception = Record.Exception(() => DocumentSerializer.Deserialize(json));
@@ -380,21 +380,21 @@ public class DocumentSerializerSimulationTests
 
     private static string SimulationDocument(string simulationJson)
         => $@"{{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
-            {{ ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }}
+            {{ ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" }}
           ],
           ""SelectionIds"": [],
           ""Simulation"": {simulationJson}
         }}";
 
     [Fact]
-    public void Deserialize_VersionTwoWithoutSimulation_HasNoConfig()
+    public void Deserialize_VersionThreeWithoutSimulation_HasNoConfig()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
-            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" }
           ],
           ""SelectionIds"": []
         }";

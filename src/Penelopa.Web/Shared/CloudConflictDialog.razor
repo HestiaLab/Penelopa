@@ -1,0 +1,58 @@
+@namespace Penelopa.Web.Shared
+@using Penelopa.Web.Services
+
+@if (Remote is not null)
+{
+    <div class="penelopa-cloud-conflict-backdrop" data-testid="cloud-conflict">
+        <section class="penelopa-cloud-conflict"
+                 role="alertdialog"
+                 aria-modal="true"
+                 aria-labelledby="penelopa-cloud-conflict-title">
+            <h2 id="penelopa-cloud-conflict-title">Cloud document changed</h2>
+            <p>
+                Another session saved revision @Remote.Revision. Choose how to continue;
+                the local document has not been overwritten.
+            </p>
+            <div class="penelopa-cloud-conflict-actions">
+                <button type="button"
+                        class="penelopa-action is-primary"
+                        data-testid="cloud-conflict-reload"
+                        @onclick="ReloadRemoteAsync">
+                    Reload remote
+                </button>
+                <button type="button"
+                        class="penelopa-action"
+                        data-testid="cloud-conflict-copy"
+                        @onclick="SaveAsCopyAsync">
+                    Save as copy
+                </button>
+                <button type="button"
+                        class="penelopa-action"
+                        data-testid="cloud-conflict-export"
+                        @onclick="ExportLocalAsync">
+                    Export local file
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public CloudDocumentSnapshot? Remote { get; set; }
+
+    [Parameter]
+    public EventCallback OnReloadRemote { get; set; }
+
+    [Parameter]
+    public EventCallback OnSaveAsCopy { get; set; }
+
+    [Parameter]
+    public EventCallback OnExportLocal { get; set; }
+
+    private Task ReloadRemoteAsync() => OnReloadRemote.InvokeAsync();
+
+    private Task SaveAsCopyAsync() => OnSaveAsCopy.InvokeAsync();
+
+    private Task ExportLocalAsync() => OnExportLocal.InvokeAsync();
+}

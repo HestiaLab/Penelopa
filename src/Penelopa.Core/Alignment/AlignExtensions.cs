@@ -1,9 +1,11 @@
+using Penelopa.Core.Primitives;
+
 namespace Penelopa.Core.Alignment;
 
 /// <summary>
 /// 将一组 <see cref="IAlignable"/> 项对齐到它们包围盒并集的同一参考值（边或中心）。
 /// </summary>
-public static class AlignExtensions
+internal static class AlignExtensions
 {
     private const float Tolerance = 1e-6f;
 
@@ -12,7 +14,7 @@ public static class AlignExtensions
     /// <param name="items">待对齐的项集合。</param>
     /// <param name="type">对齐方向。</param>
     /// <returns>已执行对齐返回 true；项数少于两个或已经对齐则返回 false。</returns>
-    public static bool Align<T>(this IEnumerable<T> items, AlignType type) where T : IAlignable
+    internal static bool Align<T>(this IEnumerable<T> items, AlignType type) where T : Primitive
     {
         var list = items.ToList();
         if (list.Count < 2)

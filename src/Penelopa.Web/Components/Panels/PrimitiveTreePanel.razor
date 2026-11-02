@@ -50,6 +50,9 @@
     [Inject]
     private IPrimitiveService PrimitiveService { get; set; } = null!;
 
+    [Inject]
+    private DocumentEditor DocumentEditor { get; set; } = null!;
+
     protected override void OnInitialized()
     {
         base.OnInitialized();
@@ -119,11 +122,11 @@
         {
             if (!args.ShiftKey && key == "z")
             {
-                PrimitiveService.Undo();
+                DocumentEditor.Undo();
             }
             else if (key == "y" || (args.ShiftKey && key == "z"))
             {
-                PrimitiveService.Redo();
+                DocumentEditor.Redo();
             }
 
             return;
@@ -131,7 +134,7 @@
 
         if (args.Key == "Delete")
         {
-            PrimitiveService.RemoveRange(PrimitiveService.GetSelection());
+            DocumentEditor.RemoveRange(PrimitiveService.GetSelection());
         }
     }
 

@@ -18,7 +18,11 @@ public class DocumentImportRollbackServiceTests
     {
         _config = new SimulationConfigStore(_primitives);
         _storage = new DocumentStorage(new TestJsRuntime());
-        _rollback = new DocumentImportRollbackService(_primitives, _config, _storage);
+        _rollback = new DocumentImportRollbackService(
+            _primitives,
+            new DocumentEditor(_primitives),
+            _config,
+            _storage);
     }
 
     [Fact]

@@ -48,10 +48,11 @@ internal sealed class ServiceInteractionHost : IEditorInteractionHost
     {
     }
 
-    public void BeginMutation()
+    public void BeginMutation(string label)
     {
         MutationStarts++;
-        Service.BeginTransaction();
+        Service.BeginTransaction(DocumentCommands.Gesture, label);
+        Service.RecordBeforeChange(Service.GetSelection());
     }
 
     public void CommitMutation()

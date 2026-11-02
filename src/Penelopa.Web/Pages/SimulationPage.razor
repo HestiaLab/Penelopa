@@ -36,6 +36,18 @@
                             <PenelopaIcon Name="back" Size="14" />
                             <span>Back to editor</span>
                         </button>
+                        <label class="penelopa-visually-hidden" for="simulation-document">
+                            Document
+                        </label>
+                        <select id="simulation-document"
+                                class="penelopa-simulation-document"
+                                value="@Manager.Active.Id"
+                                @onchange="SwitchDocumentAsync">
+                            @foreach (var session in Manager.Sessions)
+                            {
+                                <option value="@session.Id">@session.Name</option>
+                            }
+                        </select>
                         <button type="button"
                                 class="penelopa-action"
                                 disabled="@(!CanSave || _pendingDormantSave)"
@@ -161,6 +173,7 @@
                                           FitVersion="@_fitVersion"
                                           CanFit="@CanFit"
                                           RenderLoopEnabled="@(RuntimeState == SimulationState.Playing)"
+                                          EffectiveValues="@_runtime?.Overlay"
                                           OnFitRequested="@FitSimulation" />
                         @if (_roots.Count == 0)
                         {
@@ -234,6 +247,7 @@
     private int _frameCount;
 
     private bool _disposed;
+    private bool _switchingDocument;
     private bool _pendingDormantSave;
     private bool _saveError;
     private string? _errorMessage;
@@ -255,6 +269,9 @@
 
     [Inject]
     private DocumentStorage DocumentStorage { get; set; } = null!;
+
+    [Inject]
+    private DocumentSessionManager Manager { get; set; } = null!;
 
     [Inject]
     private NavigationManager Navigation { get; set; } = null!;
@@ -317,8 +334,9 @@
         _workspace = workspaceResult.Value;
         _roots = PrimitiveService.GetAll();
         _index = SimulationPrimitiveIndex.Create(_roots);
-        ConfigStore.ClearHistory();
         ConfigStore.Changed += HandleConfigChanged;
+        PrimitiveService.Changed += HandleDocumentChanged;
+        Manager.Changed += HandleManagerChanged;
         Navigation.LocationChanged += HandleLocationChanged;
 
         var editorSelection = PrimitiveService.GetSelection();
@@ -342,6 +360,7 @@
         }
 
         _dotNetRef ??= DotNetObjectReference.Create(this);
+        await Manager.InitializeAsync();
         try
         {
             if (_keyboardHandle is null)
@@ -442,7 +461,10 @@
         var result = await DocumentStorage.SaveAsync(
             _roots,
             PrimitiveService.GetSelection(),
-            ConfigStore.ExportActive());
+            ConfigStore.ExportActive(),
+            PrimitiveService.DocumentId,
+            PrimitiveService.Revision,
+            PrimitiveService.Extensions);
         if (_disposed)
         {
             return;
@@ -537,9 +559,90 @@
         ConfigStore.SetLoop(!ConfigStore.Config.Loop);
     }
 
+    private void HandleDocumentChanged(DocumentChange change)
+    {
+        if (_disposed || _switchingDocument || _runtime is null)
+        {
+            return;
+        }
+
+        var roots = PrimitiveService.GetAll();
+        var structureChanged = (change.Kind & DocumentChangeKind.Structure) != 0
+            && !roots.SequenceEqual(_roots);
+        if (!structureChanged)
+        {
+            if ((change.Kind & DocumentChangeKind.Geometry) != 0)
+            {
+                _canvas?.Invalidate();
+                PublishReadout(force: true);
+            }
+
+            return;
+        }
+
+        // 统一撤销可能恢复/删除图元；结束会话并重建索引，避免 overlay 指向旧树。
+        _runtime.Stop();
+        _roots = roots;
+        _index = SimulationPrimitiveIndex.Create(_roots);
+        _runtime = new SimulationRuntime(_roots, ConfigStore.Config);
+        _fitBounds = SimulationBoundsEstimator.Estimate(_roots, ConfigStore.Config);
+        _fitVersion++;
+        RefreshDormantTracks();
+        ReconcileSelection();
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
+    private void HandleManagerChanged()
+        => _ = InvokeAsync(StateHasChanged);
+
+    private async Task SwitchDocumentAsync(ChangeEventArgs args)
+    {
+        if (_disposed
+            || !Guid.TryParse(args.Value?.ToString(), out var sessionId)
+            || sessionId == Manager.Active.Id)
+        {
+            return;
+        }
+
+        _switchingDocument = true;
+        try
+        {
+            if (CanStop)
+            {
+                await StopAsync();
+            }
+
+            if (await Manager.ActivateAsync(sessionId))
+            {
+                RebuildForActiveDocument();
+            }
+        }
+        finally
+        {
+            _switchingDocument = false;
+        }
+    }
+
+    private void RebuildForActiveDocument()
+    {
+        _runtime?.Stop();
+        _roots = PrimitiveService.GetAll();
+        _index = SimulationPrimitiveIndex.Create(_roots);
+        _runtime = new SimulationRuntime(_roots, ConfigStore.Config);
+        _fitBounds = SimulationBoundsEstimator.Estimate(_roots, ConfigStore.Config);
+        _fitVersion++;
+        RefreshDormantTracks();
+        ReconcileSelection();
+        _canvas?.Invalidate();
+        PublishReadout(force: true);
+        StateHasChanged();
+    }
+
     private void HandleConfigChanged()
     {
-        if (_disposed || _runtime is null)
+        if (_disposed || _switchingDocument || _runtime is null)
         {
             return;
         }
@@ -987,7 +1090,7 @@
     }
 
     /// <summary>
-    /// 结束会话并恢复基础值；只有真正结束了一次会话才通知编辑器重读，
+    /// 结束会话并清空 overlay；只有真正结束了一次会话才通知编辑器重读，
     /// 正常帧写入与 Stop 后的重复调用都不会产生通知。
     /// </summary>
     private void EndSession()
@@ -1026,6 +1129,8 @@
         EndSession();
         _disposed = true;
         ConfigStore.Changed -= HandleConfigChanged;
+        PrimitiveService.Changed -= HandleDocumentChanged;
+        Manager.Changed -= HandleManagerChanged;
         Navigation.LocationChanged -= HandleLocationChanged;
         if (_keyboardHandle is not null)
         {

@@ -174,7 +174,7 @@ public sealed class EditorInteractionController
                 break;
 
             case ControllerState.Resizing:
-                CaptureMutation();
+                CaptureMutation("Resize");
                 var newBounds = ResizeMath.ComputeBounds(_resizeOriginalBounds, _resizeHandle, world);
                 var anchor = ResizeMath.FixedCorner(_resizeOriginalBounds, _resizeHandle);
                 _resizeTarget!.SetBounds(newBounds, anchor);
@@ -293,7 +293,7 @@ public sealed class EditorInteractionController
         _drillIndex = 0;
     }
 
-    private void CaptureMutation()
+    private void CaptureMutation(string label)
     {
         if (_mutationCaptured)
         {
@@ -301,7 +301,7 @@ public sealed class EditorInteractionController
         }
 
         _mutationCaptured = true;
-        _host.BeginMutation();
+        _host.BeginMutation(label);
     }
 
     private void BeginDrag(Point world, Point css)
@@ -317,7 +317,7 @@ public sealed class EditorInteractionController
         }
 
         _dragItems = _host.GetSelection().ToList();
-        CaptureMutation();
+        CaptureMutation("Move selection");
 
         // 从按下点计算全量位移，使选区从按下位置开始跟随指针（而非从越过阈值处）
         float dx = world.X - _pressStart.X;

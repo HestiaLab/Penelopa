@@ -572,6 +572,30 @@ test('storage helpers return results instead of throwing', () => {
   assert.equal(harness.storage.data.get('penelopa.document'), 'next');
 });
 
+test('journal helpers report unavailable IndexedDB without throwing', async () => {
+  const harness = createHarness();
+
+  const read = await harness.window.penelopa.readJournal();
+  assert.equal(read.ok, false);
+  assert.equal(read.value, null);
+  assert.match(read.error, /IndexedDB is not available/);
+
+  const written = await harness.window.penelopa.writeJournal({
+    documentId: '00000000-0000-0000-0000-000000000001',
+    revision: 1,
+    savedRevision: -1,
+    savedAt: new Date(0).toISOString(),
+    json: '{}',
+    hash: 'hash',
+  });
+  assert.equal(written.ok, false);
+  assert.match(written.error, /IndexedDB is not available/);
+
+  const cleared = await harness.window.penelopa.clearJournal();
+  assert.equal(cleared.ok, false);
+  assert.match(cleared.error, /IndexedDB is not available/);
+});
+
 test('downloadTextFile creates a temporary blob link and revokes it', () => {
   let clicked = false;
   let appended = false;
@@ -696,8 +720,8 @@ function createDropHarness() {
   };
   const toolsTab = {
     textContent: 'Tools',
-    hasAttribute(name) {
-      return name === 'aria-selected' ? toolsSelected : false;
+    getAttribute(name) {
+      return name === 'aria-selected' ? (toolsSelected ? 'true' : 'false') : null;
     },
     click() {
       clickCount++;
@@ -836,11 +860,11 @@ test('attachFileDrop ignores non-file drags', () => {
   assert.deepEqual(harness.calls, []);
 });
 
-test('attachFileDrop treats aria-selected attribute presence as selected', () => {
+test('attachFileDrop treats aria-selected=true as selected', () => {
   const harness = createDropHarness();
   harness.setInputAvailable(false);
-  harness.toolsTab.hasAttribute = (name) =>
-    name === 'aria-selected' ? true : false;
+  harness.toolsTab.getAttribute = (name) =>
+    name === 'aria-selected' ? 'true' : null;
   const handle = harness.window.penelopa.attachFileDrop(
     harness.root,
     harness.dotNetRef);
@@ -937,8 +961,8 @@ test('attachFileDrop does not call back after dispose', () => {
 test('attachFileDrop keeps an already selected Tools tab and imports once', () => {
   const harness = createDropHarness();
   harness.setInputAvailable(true);
-  harness.toolsTab.hasAttribute = (name) =>
-    name === 'aria-selected' ? true : false;
+  harness.toolsTab.getAttribute = (name) =>
+    name === 'aria-selected' ? 'true' : null;
   const file = { name: 'scene.penelopa.json', size: 12 };
   const handle = harness.window.penelopa.attachFileDrop(
     harness.root,

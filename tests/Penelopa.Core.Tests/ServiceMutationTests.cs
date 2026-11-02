@@ -189,7 +189,8 @@ public class ServiceMutationTests
 
         public IntPropValue Color { get; }
 
-        protected override Penelopa.Core.Alignment.Box GetLocalBoundingBox()
+        protected override Penelopa.Core.Alignment.Box GetLocalBoundingBox(
+            Penelopa.Core.Simulation.IEffectiveValueSource? values)
             => new(0f, 0f, 1f, 1f);
 
         protected override void TranslateLocal(float deltaX, float deltaY)

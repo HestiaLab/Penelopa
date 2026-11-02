@@ -1,0 +1,263 @@
+@namespace Penelopa.Web.Components
+@using Microsoft.AspNetCore.Components
+@using Penelopa.Web.Services
+@implements IDisposable
+
+<div class="penelopa-document-tabs-wrap">
+<nav class="penelopa-document-tabs"
+     data-testid="document-tabs"
+     aria-label="Open documents">
+    <div class="penelopa-document-tablist" role="tablist">
+        @foreach (var session in Manager.Sessions)
+        {
+            var isActive = Manager.Active.Id == session.Id;
+            <div class="penelopa-document-tab @(isActive ? "is-active" : string.Empty)">
+                <button type="button"
+                        role="tab"
+                        aria-selected="@(isActive ? "true" : "false")"
+                        class="penelopa-document-tab-label"
+                        @onclick="() => ActivateAsync(session.Id)">
+                    @session.Name
+                </button>
+                @if (Manager.Sessions.Count > 1)
+                {
+                    <button type="button"
+                            class="penelopa-document-tab-close"
+                            aria-label="@($"Close {session.Name}")"
+                            title="@($"Close {session.Name}")"
+                            @onclick="() => RequestCloseAsync(session.Id)">
+                        <PenelopaIcon Name="close" Size="10" />
+                    </button>
+                }
+            </div>
+        }
+    </div>
+    <button type="button"
+            class="penelopa-document-tab-new"
+            aria-label="New document"
+            title="@(Manager.Sessions.Count >= DocumentSessionManager.MaxSessions
+                ? $"At most {DocumentSessionManager.MaxSessions} documents can be open."
+                : "New document")"
+            disabled="@(Manager.Sessions.Count >= DocumentSessionManager.MaxSessions)"
+            @onclick="CreateAsync">
+        <span aria-hidden="true">+</span>
+    </button>
+    @{
+        var library = Manager.Library
+            .Where(entry => Manager.Sessions.All(
+                session => session.StorageKey != entry.StorageKey))
+            .ToList();
+    }
+    @if (library.Count > 0)
+    {
+        <details class="penelopa-document-library" data-testid="document-library">
+            <summary class="penelopa-document-library-toggle"
+                     aria-label="Open saved or closed document"
+                     title="Open saved or closed document">
+                <PenelopaIcon Name="folder-open" Size="12" />
+            </summary>
+            <div class="penelopa-document-library-menu" role="menu">
+                @foreach (var entry in library)
+                {
+                    <button type="button"
+                            role="menuitem"
+                            class="penelopa-document-library-item"
+                            @onclick="() => OpenAsync(entry)">
+                        <span>@entry.Name</span>
+                        @if (entry.IsEmpty)
+                        {
+                            <small class="penelopa-document-library-status is-empty">empty</small>
+                        }
+                        else
+                        {
+                            <small class="penelopa-document-library-status @(entry.IsSaved ? "is-saved" : "is-unsaved")">
+                                @SavedLabel(entry)@(entry.IsSaved ? string.Empty : " · unsaved")
+                            </small>
+                        }
+                    </button>
+                }
+            </div>
+        </details>
+    }
+    @if (_message is not null)
+    {
+        <span class="penelopa-document-tabs-message" role="alert">@_message</span>
+    }
+</nav>
+@if (_closeConfirmId is not null)
+{
+    <div class="penelopa-document-close-confirm"
+         data-testid="document-close-confirm"
+         role="alertdialog"
+         aria-modal="true"
+         aria-labelledby="penelopa-close-document-title">
+        <span id="penelopa-close-document-title">
+            Close @_closeConfirmName? Unsaved changes will be kept in the document library.
+        </span>
+        <div class="penelopa-document-close-confirm-actions">
+            <button type="button"
+                    class="penelopa-action is-small is-primary"
+                    @ref="_closeConfirmButton"
+                    @onclick="ConfirmCloseAsync">
+                Close anyway
+            </button>
+            <button type="button"
+                    class="penelopa-action is-small"
+                    @onclick="CancelCloseConfirm">
+                Cancel close
+            </button>
+        </div>
+    </div>
+}
+</div>
+
+@code {
+    private string? _message;
+    private Guid? _closeConfirmId;
+    private string? _closeConfirmName;
+    private ElementReference _closeConfirmButton;
+    private bool _focusCloseConfirm;
+
+    [Inject]
+    private DocumentSessionManager Manager { get; set; } = null!;
+
+    protected override void OnInitialized()
+    {
+        Manager.Changed += HandleManagerChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Manager.InitializeAsync();
+            return;
+        }
+
+        if (_focusCloseConfirm)
+        {
+            _focusCloseConfirm = false;
+            try
+            {
+                await _closeConfirmButton.FocusAsync();
+            }
+            catch (Exception ex) when (ex is JSException
+                or JSDisconnectedException
+                or InvalidOperationException)
+            {
+                // 焦点是增强；JS 不可达时保留键盘顺序。
+            }
+        }
+    }
+
+    private void HandleManagerChanged()
+    {
+        if (_closeConfirmId is { } id
+            && Manager.Sessions.All(session => session.Id != id))
+        {
+            CancelCloseConfirm();
+        }
+
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ActivateAsync(Guid sessionId)
+    {
+        CancelCloseConfirm();
+        _message = null;
+        if (!await Manager.ActivateAsync(sessionId))
+        {
+            _message = "The document could not be activated.";
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        CancelCloseConfirm();
+        _message = null;
+        var (success, error) = await Manager.CreateNewAsync();
+        if (!success)
+        {
+            _message = error;
+        }
+    }
+
+    private async Task RequestCloseAsync(Guid sessionId)
+    {
+        _message = null;
+        var session = Manager.Sessions.FirstOrDefault(candidate => candidate.Id == sessionId);
+        if (session is null)
+        {
+            _message = "The document is not open.";
+            return;
+        }
+
+        if (Manager.HasUnsavedChanges(session))
+        {
+            _closeConfirmId = sessionId;
+            _closeConfirmName = session.Name;
+            _focusCloseConfirm = true;
+            StateHasChanged();
+            return;
+        }
+
+        await CloseSessionAsync(sessionId, session.Name);
+    }
+
+    private async Task ConfirmCloseAsync()
+    {
+        if (_closeConfirmId is not { } sessionId)
+        {
+            return;
+        }
+
+        var name = _closeConfirmName ?? "Document";
+        _closeConfirmId = null;
+        _closeConfirmName = null;
+        _focusCloseConfirm = false;
+        await CloseSessionAsync(sessionId, name);
+    }
+
+    private void CancelCloseConfirm()
+    {
+        _closeConfirmId = null;
+        _closeConfirmName = null;
+        _focusCloseConfirm = false;
+    }
+
+    private async Task CloseSessionAsync(Guid sessionId, string name)
+    {
+        var (success, error) = await Manager.CloseAsync(sessionId);
+        if (!success)
+        {
+            _message = error;
+            StateHasChanged();
+            return;
+        }
+
+        _message = $"{name} closed. Reopen it from the document library.";
+        StateHasChanged();
+    }
+
+    private async Task OpenAsync(DocumentLibraryEntry entry)
+    {
+        _message = null;
+        var (success, error) = await Manager.OpenFromLibraryAsync(entry);
+        if (!success)
+        {
+            _message = error;
+        }
+    }
+
+    private static string SavedLabel(DocumentLibraryEntry entry)
+    {
+        return DateTimeOffset.TryParse(entry.SavedAt, out var savedAt)
+            ? savedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+            : "saved";
+    }
+
+    public void Dispose()
+    {
+        Manager.Changed -= HandleManagerChanged;
+    }
+}

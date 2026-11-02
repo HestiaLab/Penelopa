@@ -15,7 +15,7 @@
                 class="penelopa-icon-button"
                 disabled="@(!_canUndo)"
                 aria-label="Undo document change"
-                title="Undo (Ctrl+Z)"
+                title="@UndoTooltip"
                 @onclick="Undo">
             <PenelopaIcon Name="undo" Size="16" />
         </button>
@@ -23,7 +23,7 @@
                 class="penelopa-icon-button"
                 disabled="@(!_canRedo)"
                 aria-label="Redo document change"
-                title="Redo (Ctrl+Y)"
+                title="@RedoTooltip"
                 @onclick="Redo">
             <PenelopaIcon Name="redo" Size="16" />
         </button>
@@ -41,9 +41,14 @@
 @code {
     private bool _canUndo;
     private bool _canRedo;
+    private string? _undoLabel;
+    private string? _redoLabel;
 
     [Inject]
     private IPrimitiveService PrimitiveService { get; set; } = null!;
+
+    [Inject]
+    private DocumentEditor DocumentEditor { get; set; } = null!;
 
     protected override void OnInitialized()
     {
@@ -62,11 +67,21 @@
     {
         _canUndo = PrimitiveService.CanUndo;
         _canRedo = PrimitiveService.CanRedo;
+        _undoLabel = PrimitiveService.UndoLabel;
+        _redoLabel = PrimitiveService.RedoLabel;
     }
 
-    private void Undo() => PrimitiveService.Undo();
+    private string UndoTooltip => _undoLabel is null
+        ? "Undo (Ctrl+Z)"
+        : $"Undo {_undoLabel} (Ctrl+Z)";
 
-    private void Redo() => PrimitiveService.Redo();
+    private string RedoTooltip => _redoLabel is null
+        ? "Redo (Ctrl+Y)"
+        : $"Redo {_redoLabel} (Ctrl+Y)";
+
+    private void Undo() => DocumentEditor.Undo();
+
+    private void Redo() => DocumentEditor.Redo();
 
     public void Dispose()
     {

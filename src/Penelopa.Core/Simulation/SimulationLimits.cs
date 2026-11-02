@@ -27,9 +27,6 @@ public static class SimulationLimits
     /// <summary>新建轨道第二个关键帧的默认时间跨度（秒）。</summary>
     public const double DefaultNewTrackSpanSeconds = 1d;
 
-    /// <summary>仿真配置撤销栈的最大深度。</summary>
-    public const int ConfigUndoDepth = 50;
-
     /// <summary>动画范围估算的最大采样点数。</summary>
     public const int MaxFitSamples = 512;
 }

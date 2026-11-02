@@ -1,11 +1,22 @@
 using Penelopa.Core.Alignment;
 using Penelopa.Core.Primitives;
+using System.Text.Json;
 
 namespace Penelopa.Core.Services;
 
 /// <summary>管理图元集合和当前选区。</summary>
 public interface IPrimitiveService
 {
+    Guid DocumentId { get; }
+
+    long Revision { get; }
+
+    IReadOnlyDictionary<string, JsonElement> Extensions { get; }
+
+    void SetDocumentIdentity(Guid documentId, long revision);
+
+    void SetExtensions(IReadOnlyDictionary<string, JsonElement>? extensions);
+
     void Add(Primitive primitive);
     void Remove(Primitive primitive);
 
@@ -36,22 +47,47 @@ public interface IPrimitiveService
     bool CanUndo { get; }
     bool CanRedo { get; }
 
+    /// <summary>下一个可撤销动作的可读标签；没有历史时为 null。</summary>
+    string? UndoLabel { get; }
+
+    /// <summary>下一个可重做动作的可读标签；没有历史时为 null。</summary>
+    string? RedoLabel { get; }
+
+    int UndoDepth { get; }
+    int RedoDepth { get; }
+
+    /// <summary>当前 undo + redo 的估算权重（字节）。</summary>
+    long EstimatedBytes { get; }
+
+    /// <summary>配置历史预算；超出时从最旧条目开始淘汰。</summary>
+    void ConfigureHistoryBudget(int maxEntries, long maxBytes);
+
     /// <summary>捕获当前文档与完整 undo/redo 栈，供导入回滚等显式快照使用。</summary>
     DocumentHistoryState CaptureHistoryState();
 
-    /// <summary>恢复文档与 undo/redo 栈；选区不属于历史，由调用方另行恢复。</summary>
+    /// <summary>恢复文档、选区与 undo/redo 栈。</summary>
     void RestoreHistoryState(DocumentHistoryState state);
+
+    /// <summary>结束当前属性合并窗口；选区/编辑目标变化时调用。</summary>
+    void EndCoalescing();
+
+    /// <summary>标记非文档补丁的持久设置（如 Loop）发生变化；仅递增 revision。</summary>
+    void MarkConfigurationChanged();
 
     /// <summary>开始事务边界；所有文档修改都通过它进入历史。</summary>
     void BeginTransaction();
+
+    /// <summary>使用指定命令 id 与标签开始事务；嵌套调用共享最外层标签。</summary>
+    void BeginTransaction(string commandId, string label);
+
+    /// <summary>在直接修改属性（手势）前记录图元的当前属性值。</summary>
+    void RecordBeforeChange(IEnumerable<Primitive> primitives);
 
     /// <summary>提交事务边界，生成一个撤销条目。</summary>
     void CommitTransaction();
 
     /// <summary>取消事务边界并恢复到事务前状态。</summary>
     void CancelTransaction();
-
-    void CaptureForGesture();
 
     /// <summary>对齐当前选区，返回是否发生移动；修改可撤销。</summary>
     bool Align(AlignType type);

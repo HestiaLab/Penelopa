@@ -289,7 +289,9 @@ test('loading a document with a null primitive reports a readable error and keep
   const errors = collectSimulationErrors(page);
   await page.addInitScript(() => {
     localStorage.setItem('penelopa.document', JSON.stringify({
-      Version: 2,
+      Version: 3,
+      DocumentId: '10000000-0000-0000-0000-000000000004',
+      Revision: 0,
       Primitives: [null],
       SelectionIds: [],
     }));

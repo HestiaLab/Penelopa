@@ -7,14 +7,14 @@ using Penelopa.Core.Simulation;
 namespace Penelopa.Core.Services;
 
 /// <summary>
-/// 图元树的 JSON 序列化/反序列化。选区以图元 Id 存储，加载后可重新解析。
-/// 容器子元素嵌套在父节点内。所有读取只接受当前（v2）文档；加载时还校验
-/// Id 唯一性、节点数/深度/字节数，防止手工编辑或被污染的 localStorage 破坏页面。
+/// 图元树的 JSON 序列化/反序列化（v3）。图元类型使用稳定字符串 id，
+/// 文档携带 documentId/revision；所有读取只接受 v3，并校验 Id 唯一性、
+/// 节点数/深度/字节数，防止手工编辑或被污染的 localStorage 破坏页面。
 /// </summary>
 public static class DocumentSerializer
 {
     /// <summary>当前文档格式版本；读取与写入都只使用此版本。</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     /// <summary>单条加载警告的最大长度，避免把文件可控字符串整段回显给用户。</summary>
     private const int MaxWarningLength = 240;
@@ -31,11 +31,16 @@ public static class DocumentSerializer
     private sealed class DocumentDto
     {
         public int Version { get; set; }
+        public Guid DocumentId { get; set; }
+        public long Revision { get; set; }
         public List<PrimitiveDto>? Primitives { get; set; }
         public List<Guid>? SelectionIds { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public JsonElement? Simulation { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Dictionary<string, JsonElement>? Extensions { get; set; }
     }
 
     private sealed class SimulationDto
@@ -75,7 +80,6 @@ public static class DocumentSerializer
     {
         public Guid Id { get; set; }
         public string? Type { get; set; }
-        public string? Kind { get; set; }
         public Dictionary<string, object>? Props { get; set; }
         public List<PrimitiveDto>? Children { get; set; }
     }
@@ -91,35 +95,54 @@ public static class DocumentSerializer
     public static string Serialize(
         IReadOnlyList<Primitive> roots,
         IEnumerable<Primitive> selection,
-        SimulationConfig? simulation = null)
+        SimulationConfig? simulation = null,
+        Guid documentId = default,
+        long revision = 0,
+        IReadOnlyDictionary<string, JsonElement>? extensions = null)
     {
         var dto = new DocumentDto
         {
             Version = CurrentVersion,
+            DocumentId = documentId == Guid.Empty ? Guid.NewGuid() : documentId,
+            Revision = revision,
             Primitives = roots.Select(ToDto).ToList(),
             SelectionIds = selection.Select(p => p.Id).ToList(),
             Simulation = simulation is null
                 ? null
                 : ToJsonElement(simulation),
+            Extensions = extensions is null || extensions.Count == 0
+                ? null
+                : new Dictionary<string, JsonElement>(extensions, StringComparer.Ordinal),
         };
         return JsonSerializer.Serialize(dto, Options);
     }
 
     /// <summary>
-    /// 反序列化 v2 文档。JSON 无效、版本不是 2、Id 重复/为空、超过节点/深度/字节上限时
+    /// 反序列化 v3 文档。JSON 无效、版本不是 3、Id 重复/为空、超过节点/深度/字节上限时
     /// 返回 null。调用方根据重建的树重新解析选区 Id。
     /// </summary>
     public static DeserializeResult? Deserialize(string json)
         => Deserialize(json, out _);
 
     /// <summary>
-    /// 反序列化 v2 文档，并在仅因版本不受支持而拒绝时通过
+    /// 反序列化 v3 文档，并在仅因版本不受支持而拒绝时通过
     /// <paramref name="rejectedVersion"/> 报告文件中的版本号
     /// （缺失版本为 0）；JSON/结构错误时为 null。
     /// </summary>
     public static DeserializeResult? Deserialize(string json, out int? rejectedVersion)
+        => Deserialize(json, out rejectedVersion, out _);
+
+    /// <summary>
+    /// 与 <see cref="Deserialize(string, out int?)"/> 相同，并额外通过
+    /// <paramref name="unknownTypeId"/> 报告导致拒绝的未知图元 type id。
+    /// </summary>
+    public static DeserializeResult? Deserialize(
+        string json,
+        out int? rejectedVersion,
+        out string? unknownTypeId)
     {
         rejectedVersion = null;
+        unknownTypeId = null;
         if (string.IsNullOrWhiteSpace(json) || Encoding.UTF8.GetByteCount(json) > MaxDocumentBytes)
         {
             return null;
@@ -162,18 +185,46 @@ public static class DocumentSerializer
                 .ToList();
             var warnings = new List<string>();
             var simulation = ParseSimulation(dto, roots, warnings);
-            return new DeserializeResult(roots, selectionIds, simulation, warnings);
+            return new DeserializeResult(
+                roots,
+                selectionIds,
+                simulation,
+                warnings,
+                dto.DocumentId == Guid.Empty ? Guid.NewGuid() : dto.DocumentId,
+                Math.Max(0, dto.Revision),
+                dto.Extensions);
+        }
+        catch (UnknownPrimitiveTypeException ex)
+        {
+            unknownTypeId = ex.TypeId;
+            return null;
         }
         catch (JsonException)
         {
             return null;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or FormatException or OverflowException or InvalidCastException or ArgumentException)
+        catch (Exception ex) when (ex is InvalidOperationException
+            or FormatException
+            or OverflowException
+            or InvalidCastException
+            or ArgumentException
+            or NotSupportedException)
         {
             // JSON 合法但文档结构异常（未知类型/种类或属性类型不匹配），
             // 如手工编辑或未来版本文件。与无效 JSON 同等处理。
             return null;
         }
+    }
+
+    private sealed class UnknownPrimitiveTypeException : Exception
+    {
+        public UnknownPrimitiveTypeException(string? typeId)
+            : base($"Unknown primitive type id '{typeId}'.")
+        {
+            TypeId = typeId;
+        }
+
+        public string? TypeId { get; }
     }
 
     private static PrimitiveDto ToDto(Primitive primitive)
@@ -190,12 +241,11 @@ public static class DocumentSerializer
         var dto = new PrimitiveDto
         {
             Id = primitive.Id,
-            Type = primitive.GetType().Name,
+            Type = PrimitiveTypeRegistry.Default.ResolveTypeId(primitive),
             Props = props,
         };
         if (primitive is Container container)
         {
-            dto.Kind = container.Kind.ToString();
             dto.Children = container.Children.Select(ToDto).ToList();
         }
 
@@ -510,14 +560,12 @@ public static class DocumentSerializer
             throw new ArgumentException($"Duplicate primitive id '{dto.Id}'.");
         }
 
-        Primitive primitive = dto.Type switch
+        if (!PrimitiveTypeRegistry.Default.TryCreate(dto.Type ?? string.Empty, out var primitive)
+            || primitive is null)
         {
-            "Circle" => new Circle(),
-            "Rectangle" => new Rectangle(),
-            "Triangle" => new Triangle(),
-            "Container" => CreateContainer(dto.Kind),
-            _ => throw new InvalidOperationException($"Unknown primitive type '{dto.Type}'."),
-        };
+            throw new UnknownPrimitiveTypeException(dto.Type);
+        }
+
         primitive.Id = dto.Id;
 
         if (dto.Props is not null)
@@ -545,27 +593,20 @@ public static class DocumentSerializer
         return primitive;
     }
 
-    private static Container CreateContainer(string? kind)
-    {
-        return kind switch
-        {
-            "Offset" => Container.CreateOffset("Offset Container", 0f, 0f),
-            "Rotation" => Container.CreateRotation("Rotate Container", 0f),
-            "Flip" => Container.CreateFlip("Flip Container", flipX: false, flipY: false),
-            _ => throw new InvalidOperationException($"Unknown container kind '{kind}'."),
-        };
-    }
-
     private static void ApplyProps(Primitive primitive, Dictionary<string, object> props)
     {
+        var byName = new Dictionary<string, object>(props.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, value) in props)
+        {
+            byName[name] = value;
+        }
+
         foreach (var prop in primitive.Props)
         {
-            if (!props.TryGetValue(prop.Name, out var value))
+            if (byName.TryGetValue(prop.Name, out var value))
             {
-                continue;
+                prop.SetBoxedValue(value);
             }
-
-            prop.SetBoxedValue(value);
         }
     }
 
@@ -589,12 +630,20 @@ public sealed class DeserializeResult
         IReadOnlyList<Primitive> roots,
         IReadOnlyList<Guid> selectionIds,
         SimulationConfig? simulation = null,
-        IReadOnlyList<string>? warnings = null)
+        IReadOnlyList<string>? warnings = null,
+        Guid documentId = default,
+        long revision = 0,
+        IReadOnlyDictionary<string, JsonElement>? extensions = null)
     {
         Roots = roots;
         SelectionIds = selectionIds;
         Simulation = simulation;
         Warnings = warnings is null ? Array.Empty<string>() : warnings.ToArray();
+        DocumentId = documentId == Guid.Empty ? Guid.NewGuid() : documentId;
+        Revision = revision;
+        Extensions = extensions is null
+            ? new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+            : new Dictionary<string, JsonElement>(extensions, StringComparer.Ordinal);
     }
 
     public IReadOnlyList<Primitive> Roots { get; }
@@ -606,6 +655,13 @@ public sealed class DeserializeResult
 
     /// <summary>加载仿真段时产生的警告（非法段被丢弃、悬空轨道被剪除等）。</summary>
     public IReadOnlyList<string> Warnings { get; }
+
+    public Guid DocumentId { get; }
+
+    public long Revision { get; }
+
+    /// <summary>未知扩展段；加载后原样保留，保存时写回。</summary>
+    public IReadOnlyDictionary<string, JsonElement> Extensions { get; }
 
     /// <summary>按 Id 在重建的树中解析选区；未知 Id 被忽略。</summary>
     public IReadOnlyList<Primitive> ResolveSelection()

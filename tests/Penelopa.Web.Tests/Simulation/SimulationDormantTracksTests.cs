@@ -9,7 +9,7 @@ using Xunit;
 
 namespace Penelopa.Web.Tests.Simulation;
 
-public class SimulationDormantTracksTests : TestContext
+public class SimulationDormantTracksTests : BunitContext
 {
     private readonly PrimitiveService _service;
     private readonly SimulationConfigStore _store;
@@ -18,6 +18,7 @@ public class SimulationDormantTracksTests : TestContext
     {
         _service = new PrimitiveService();
         Services.AddSingleton<IPrimitiveService>(_service);
+        Services.AddSingleton<DocumentEditor>();
         Services.AddSingleton<SimulationConfigStore>();
         _store = Services.GetRequiredService<SimulationConfigStore>();
     }
@@ -41,7 +42,7 @@ public class SimulationDormantTracksTests : TestContext
         Assert.Equal(2, dormant.Count);
 
         SimulationTrack? removed = null;
-        var cut = RenderComponent<SimulationDormantTracks>(parameters => parameters
+        var cut = Render<SimulationDormantTracks>(parameters => parameters
             .Add(component => component.Tracks, dormant)
             .Add(component => component.CanEdit, true)
             .Add(
@@ -75,7 +76,7 @@ public class SimulationDormantTracksTests : TestContext
         var remaining = Assert.Single(_store.Config.Tracks);
         Assert.Equal("PosY", remaining.PropertyName);
 
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(component => component.Tracks, _store.GetDormantTracks()));
         Assert.Contains("1 inactive track(s)", cut.Markup);
         var row = Assert.Single(cut.FindAll(".penelopa-simulation-dormant-list li"));
@@ -83,7 +84,7 @@ public class SimulationDormantTracksTests : TestContext
         Assert.DoesNotContain("PosX", row.TextContent);
 
         _store.Undo();
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(component => component.Tracks, _store.GetDormantTracks()));
         Assert.Equal(2, _store.Config.Tracks.Count);
         Assert.Equal(
@@ -102,7 +103,7 @@ public class SimulationDormantTracksTests : TestContext
         _service.Remove(rectangle);
         var calls = 0;
 
-        var cut = RenderComponent<SimulationDormantTracks>(parameters => parameters
+        var cut = Render<SimulationDormantTracks>(parameters => parameters
             .Add(component => component.Tracks, _store.GetDormantTracks())
             .Add(component => component.CanEdit, false)
             .Add(
@@ -113,7 +114,7 @@ public class SimulationDormantTracksTests : TestContext
             .Single(button => button.TextContent.Trim() == "Remove inactive")
             .HasAttribute("disabled"));
 
-        cut.SetParametersAndRender(parameters => parameters
+        cut.Render(parameters => parameters
             .Add(component => component.CanEdit, true));
         cut.FindAll("button")
             .Single(button => button.TextContent.Trim() == "Remove inactive")

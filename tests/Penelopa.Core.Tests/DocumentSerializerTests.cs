@@ -41,6 +41,28 @@ public class DocumentSerializerTests
     }
 
     [Fact]
+    public void Deserialize_PropertyNames_AreCaseInsensitive()
+    {
+        const string json = @"{
+          ""Version"": 3,
+          ""Primitives"": [
+            {
+              ""Id"": ""00000000-0000-0000-0000-000000000001"",
+              ""Type"": ""penelopa.rect"",
+              ""Props"": { ""posx"": 42, ""NAME"": ""Cased"" }
+            }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        var result = DocumentSerializer.Deserialize(json);
+
+        var rectangle = Assert.IsType<Rectangle>(Assert.Single(result!.Roots));
+        Assert.Equal(42f, rectangle.PosX.Value);
+        Assert.Equal("Cased", rectangle.Name.Value);
+    }
+
+    [Fact]
     public void RoundTrip_ColorProp_PreservesPackedArgb()
     {
         var circle = new Circle();
@@ -87,9 +109,30 @@ public class DocumentSerializerTests
     [Fact]
     public void Deserialize_UnknownType_ReturnsNull()
     {
-        var json = "{\"Version\":2,\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"Hexagon\", \"Props\": {}}]}";
+        var json = "{\"Version\":3,\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"Hexagon\", \"Props\": {}}]}";
 
         Assert.Null(DocumentSerializer.Deserialize(json));
+    }
+
+    [Fact]
+    public void Deserialize_UnknownType_ReportsTypeId()
+    {
+        const string json = @"{
+          ""Version"": 3,
+          ""Primitives"": [
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""acme.hexagon"" }
+          ],
+          ""SelectionIds"": []
+        }";
+
+        var result = DocumentSerializer.Deserialize(
+            json,
+            out var rejectedVersion,
+            out var unknownTypeId);
+
+        Assert.Null(result);
+        Assert.Null(rejectedVersion);
+        Assert.Equal("acme.hexagon", unknownTypeId);
     }
 
     [Fact]
@@ -97,7 +140,7 @@ public class DocumentSerializerTests
     {
         // A string where a number is expected: applying the property throws on
         // the type mismatch, and Deserialize must swallow it rather than crash.
-        var json = "{\"Version\":2,\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"Rectangle\", \"Props\": {\"Width\": \"wide\"}}]}";
+        var json = "{\"Version\":3,\"Primitives\": [{\"Id\": \"00000000-0000-0000-0000-000000000001\", \"Type\": \"penelopa.rect\", \"Props\": {\"Width\": \"wide\"}}]}";
 
         Assert.Null(DocumentSerializer.Deserialize(json));
     }
@@ -116,7 +159,7 @@ public class DocumentSerializerTests
     {
         const string json = @"{
           ""Primitives"": [
-            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" }
           ],
           ""SelectionIds"": []
         }";
@@ -129,7 +172,8 @@ public class DocumentSerializerTests
 
     [Theory]
     [InlineData("1", 1)]
-    [InlineData("3", 3)]
+    [InlineData("2", 2)]
+    [InlineData("4", 4)]
     [InlineData("99", 99)]
     [InlineData("-1", -1)]
     public void Deserialize_UnsupportedVersion_ReturnsNullAndReportsVersion(
@@ -139,7 +183,7 @@ public class DocumentSerializerTests
         var json = $@"{{
           ""Version"": {version},
           ""Primitives"": [
-            {{ ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }}
+            {{ ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" }}
           ],
           ""SelectionIds"": []
         }}";
@@ -163,9 +207,9 @@ public class DocumentSerializerTests
     public void Deserialize_StructuralError_ReportsNoRejectedVersion()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
-            { ""Id"": ""00000000-0000-0000-0000-000000000000"", ""Type"": ""Rectangle"" }
+            { ""Id"": ""00000000-0000-0000-0000-000000000000"", ""Type"": ""penelopa.rect"" }
           ],
           ""SelectionIds"": []
         }";
@@ -180,10 +224,10 @@ public class DocumentSerializerTests
     public void Deserialize_DuplicateIds_ReturnsNull()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
-            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" },
-            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Circle"" }
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" },
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.circle"" }
           ],
           ""SelectionIds"": []
         }";
@@ -195,9 +239,9 @@ public class DocumentSerializerTests
     public void Deserialize_EmptyId_ReturnsNull()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
-            { ""Id"": ""00000000-0000-0000-0000-000000000000"", ""Type"": ""Rectangle"" }
+            { ""Id"": ""00000000-0000-0000-0000-000000000000"", ""Type"": ""penelopa.rect"" }
           ],
           ""SelectionIds"": []
         }";
@@ -209,13 +253,13 @@ public class DocumentSerializerTests
     public void Deserialize_ChildrenOnNonContainer_ReturnsNull()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
             {
               ""Id"": ""00000000-0000-0000-0000-000000000001"",
-              ""Type"": ""Rectangle"",
+              ""Type"": ""penelopa.rect"",
               ""Children"": [
-                { ""Id"": ""00000000-0000-0000-0000-000000000002"", ""Type"": ""Circle"" }
+                { ""Id"": ""00000000-0000-0000-0000-000000000002"", ""Type"": ""penelopa.circle"" }
               ]
             }
           ],
@@ -245,7 +289,7 @@ public class DocumentSerializerTests
     [Fact]
     public void Deserialize_TooManyNodes_ReturnsNull()
     {
-        var builder = new StringBuilder("{\"Version\":2,\"Primitives\":[");
+        var builder = new StringBuilder("{\"Version\":3,\"Primitives\":[");
         for (var i = 0; i <= DocumentSerializer.MaxNodes; i++)
         {
             if (i > 0)
@@ -253,7 +297,7 @@ public class DocumentSerializerTests
                 builder.Append(',');
             }
 
-            builder.Append("{\"Id\":\"").Append(Guid.NewGuid()).Append("\",\"Type\":\"Rectangle\"}");
+            builder.Append("{\"Id\":\"").Append(Guid.NewGuid()).Append("\",\"Type\":\"penelopa.rect\"}");
         }
 
         builder.Append("],\"SelectionIds\":[]}");
@@ -273,9 +317,9 @@ public class DocumentSerializerTests
     public void Deserialize_DuplicateSelectionIds_AreDeduplicated()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
-            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""Rectangle"" }
+            { ""Id"": ""00000000-0000-0000-0000-000000000001"", ""Type"": ""penelopa.rect"" }
           ],
           ""SelectionIds"": [
             ""00000000-0000-0000-0000-000000000001"",
@@ -293,14 +337,13 @@ public class DocumentSerializerTests
     public void ResolveSelection_MapsKnownIdsAndIgnoresUnknown()
     {
         const string json = @"{
-          ""Version"": 2,
+          ""Version"": 3,
           ""Primitives"": [
             {
               ""Id"": ""00000000-0000-0000-0000-000000000001"",
-              ""Type"": ""Container"",
-              ""Kind"": ""Offset"",
+              ""Type"": ""penelopa.container.offset"",
               ""Children"": [
-                { ""Id"": ""00000000-0000-0000-0000-000000000002"", ""Type"": ""Circle"" }
+                { ""Id"": ""00000000-0000-0000-0000-000000000002"", ""Type"": ""penelopa.circle"" }
               ]
             }
           ],

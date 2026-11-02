@@ -40,7 +40,7 @@ test.describe('performance', () => {
     await page.evaluate(() => {
       const primitives = Array.from({ length: 500 }, (_, index) => ({
         Id: crypto.randomUUID(),
-        Type: 'Rectangle',
+        Type: 'penelopa.rect',
         Props: {
           Name: `Rect ${index}`,
           PosX: (index % 25) * 20,
@@ -51,7 +51,9 @@ test.describe('performance', () => {
         },
       }));
       localStorage.setItem('penelopa.document', JSON.stringify({
-        Version: 2,
+        Version: 3,
+        DocumentId: '10000000-0000-0000-0000-000000000002',
+        Revision: 0,
         Primitives: primitives,
         SelectionIds: [],
       }));

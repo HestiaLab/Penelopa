@@ -11,6 +11,7 @@ namespace Penelopa.Web.Services;
 public sealed class DocumentImportRollbackService : IDisposable
 {
     private readonly IPrimitiveService _primitives;
+    private readonly DocumentEditor _editor;
     private readonly SimulationConfigStore _simulation;
     private readonly DocumentStorage _storage;
     private Snapshot? _snapshot;
@@ -20,10 +21,12 @@ public sealed class DocumentImportRollbackService : IDisposable
 
     public DocumentImportRollbackService(
         IPrimitiveService primitives,
+        DocumentEditor editor,
         SimulationConfigStore simulation,
         DocumentStorage storage)
     {
         _primitives = primitives ?? throw new ArgumentNullException(nameof(primitives));
+        _editor = editor ?? throw new ArgumentNullException(nameof(editor));
         _simulation = simulation ?? throw new ArgumentNullException(nameof(simulation));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _primitives.Changed += HandleDocumentChanged;
@@ -54,7 +57,7 @@ public sealed class DocumentImportRollbackService : IDisposable
         try
         {
             snapshot = new Snapshot(
-                _primitives.CaptureHistoryState(),
+                _editor.CaptureHistoryState(),
                 _primitives.GetSelection().ToList(),
                 _simulation.CaptureState());
         }
@@ -143,7 +146,7 @@ public sealed class DocumentImportRollbackService : IDisposable
 
     private void Restore(Snapshot snapshot)
     {
-        _primitives.RestoreHistoryState(snapshot.DocumentHistory);
+        _editor.RestoreHistoryState(snapshot.DocumentHistory);
         _primitives.SetSelectedRange(snapshot.Selection);
         _simulation.RestoreState(snapshot.Simulation);
     }
@@ -171,9 +174,14 @@ public sealed class DocumentImportRollbackService : IDisposable
         Clear();
     }
 
-    private void HandleSaved()
+    private void HandleSaved(DocumentSavedEvent saved)
     {
         if (_suspended)
+        {
+            return;
+        }
+
+        if (!string.Equals(saved.StorageKey, _storage.ActiveStorageKey, StringComparison.Ordinal))
         {
             return;
         }

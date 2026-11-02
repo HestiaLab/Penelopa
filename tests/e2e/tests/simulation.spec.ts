@@ -10,11 +10,13 @@ async function seedSimulationDocument(page: Page): Promise<void> {
   const rectangleId = '00000000-0000-0000-0000-000000000001';
   await page.addInitScript((id) => {
     localStorage.setItem('penelopa.document', JSON.stringify({
-      Version: 2,
+      Version: 3,
+      DocumentId: '10000000-0000-0000-0000-000000000001',
+      Revision: 0,
       Primitives: [
         {
           Id: id,
-          Type: 'Rectangle',
+          Type: 'penelopa.rect',
           Props: {
             Name: 'Animated Rectangle',
             PosX: 10,
@@ -42,6 +44,37 @@ async function seedSimulationDocument(page: Page): Promise<void> {
     }));
   }, rectangleId);
 }
+
+test('unified undo walks configuration and document edits in one order', async ({ page }) => {
+  const errors = collectSimulationErrors(page);
+  await addRectangleAndAnimate(page);
+
+  const posXRow = page.locator('.penelopa-simulation-property')
+    .filter({ hasText: 'PosX' })
+    .first();
+  await expect(posXRow).toContainText('2 keyframe(s)');
+
+  // 1) Undo the keyframe edit (configuration entry).
+  await page.keyboard.press('Control+z');
+  await expect(posXRow).toContainText('2 keyframe(s)');
+  await expect(page.locator('.penelopa-simulation-keyframe-table tbody tr').nth(1))
+    .toContainText('10');
+
+  // 2) Undo the track creation (configuration entry).
+  await page.keyboard.press('Control+z');
+  await expect(posXRow).not.toContainText('keyframe(s)');
+  await expect(page.locator('.penelopa-simulation-keyframe-table tbody tr')).toHaveCount(0);
+
+  // 3) Undo the document Add (document entry) while on the simulation page.
+  await page.keyboard.press('Control+z');
+  await expect(page.getByRole('treeitem', { name: 'Rectangle', exact: true }))
+    .toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Back to editor', exact: true }).click();
+  await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
+  await expect(page.locator('.penelopa-tree-item')).toHaveCount(0);
+  await expectSimulationClean(page, errors);
+});
 
 test('simulation smoke loads, plays, pauses, and stops a saved animation', async ({ page }) => {
   const errors = collectSimulationErrors(page);
@@ -394,4 +427,21 @@ test('simulation timeline drags a keyframe and supports undo/redo', async ({ pag
   await expect(rows.nth(0).locator('.penelopa-simulation-keyframe-select'))
     .not.toHaveText('0.000s');
   await expectSimulationClean(page, errors);
+});
+
+test('simulation page switches between active document sessions', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Circle', exact: true }).click();
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await page.getByRole('link', { name: 'Simulate', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Simulation', exact: true })).toBeVisible();
+  await expect(page.getByRole('treeitem', { name: 'Rectangle', exact: true })).toBeVisible();
+
+  await page.locator('#simulation-document').selectOption({ label: 'Document 1' });
+  await expect(page.getByRole('treeitem', { name: 'Circle', exact: true })).toBeVisible();
+  await expect(page.getByRole('treeitem', { name: 'Rectangle', exact: true })).toHaveCount(0);
+
+  await page.locator('#simulation-document').selectOption({ label: 'Document 2' });
+  await expect(page.getByRole('treeitem', { name: 'Rectangle', exact: true })).toBeVisible();
 });

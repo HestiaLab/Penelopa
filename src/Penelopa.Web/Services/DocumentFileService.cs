@@ -20,7 +20,7 @@ public sealed record DocumentFileLoadResult(
 public sealed record DocumentExportPayload(string FileName, string Json);
 
 /// <summary>
-/// v2 JSON 文档的文件边界。复用 DocumentSerializer 的版本、字节、深度和领域校验；
+/// v3 JSON 文档的文件边界。复用 DocumentSerializer 的版本、字节、深度和领域校验；
 /// 导入只替换内存中的文档/配置，不写 localStorage，也不负责确认或撤销。
 /// </summary>
 public sealed class DocumentFileService
@@ -31,16 +31,19 @@ public sealed class DocumentFileService
 
     private readonly HttpClient _http;
     private readonly IPrimitiveService _primitives;
+    private readonly DocumentEditor _editor;
     private readonly SimulationConfigStore _config;
 
     public DocumentFileService(
         HttpClient http,
         IPrimitiveService primitives,
-        SimulationConfigStore config)
+        SimulationConfigStore config,
+        DocumentEditor editor)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _primitives = primitives ?? throw new ArgumentNullException(nameof(primitives));
         _config = config ?? throw new ArgumentNullException(nameof(config));
+        _editor = editor ?? throw new ArgumentNullException(nameof(editor));
     }
 
     /// <summary>
@@ -96,7 +99,7 @@ public sealed class DocumentFileService
         }
     }
 
-    /// <summary>读取随应用发布的示例场景；示例与用户文件走同一套 v2 校验。</summary>
+    /// <summary>读取随应用发布的示例场景；示例与用户文件走同一套 v3 校验。</summary>
     public async Task<DocumentFileLoadResult> LoadSampleAsync(
         CancellationToken cancellationToken = default)
     {
@@ -127,7 +130,9 @@ public sealed class DocumentFileService
         ArgumentNullException.ThrowIfNull(document);
 
         var selected = document.ResolveSelection();
-        _primitives.ReplaceAll(document.Roots);
+        _editor.ReplaceAll(document.Roots);
+        _primitives.SetDocumentIdentity(document.DocumentId, document.Revision);
+        _primitives.SetExtensions(document.Extensions);
         _primitives.SetSelectedRange(selected);
         _config.ReplaceConfig(document.Simulation ?? SimulationConfig.Empty);
     }
@@ -138,7 +143,13 @@ public sealed class DocumentFileService
         var roots = _primitives.GetAll().ToList();
         var selection = _primitives.GetSelection().ToList();
         var active = _config.ExportActive();
-        var json = DocumentSerializer.Serialize(roots, selection, active);
+        var json = DocumentSerializer.Serialize(
+            roots,
+            selection,
+            active,
+            _primitives.DocumentId,
+            _primitives.Revision,
+            _primitives.Extensions);
         var fileName = $"penelopa-{DateTime.Now:yyyyMMdd-HHmmss}.penelopa.json";
         return new DocumentExportPayload(fileName, json);
     }
@@ -161,21 +172,35 @@ public sealed class DocumentFileService
 
     private static DocumentFileLoadResult Parse(string fileName, string json)
     {
-        var document = DocumentSerializer.Deserialize(json, out var rejectedVersion);
+        var document = DocumentSerializer.Deserialize(
+            json,
+            out var rejectedVersion,
+            out var unknownTypeId);
         if (document is not null)
         {
             return new DocumentFileLoadResult(fileName, document, null);
         }
 
+        if (unknownTypeId is not null)
+        {
+            return Failure(
+                fileName,
+                $"This file uses an unknown primitive type '{TruncateTypeId(unknownTypeId)}'. Only types installed in this app can be imported.");
+        }
+
         var error = rejectedVersion switch
         {
-            0 => "This file has no supported document version. Only version 2 files can be imported.",
-            1 => "This file uses document version 1, which is no longer supported. Only version 2 files can be imported.",
-            > 2 => $"This file uses version {rejectedVersion}, which is newer than this app supports. Only version 2 files can be imported.",
+            0 => "This file has no supported document version. Only version 3 files can be imported.",
+            1 => "This file uses document version 1, which is no longer supported. Only version 3 files can be imported.",
+            2 => "This file uses document version 2, which is no longer supported. Only version 3 files can be imported.",
+            > 3 => $"This file uses version {rejectedVersion}, which is newer than this app supports. Only version 3 files can be imported.",
             _ => "This is not a valid or supported Penelopa document.",
         };
         return Failure(fileName, error);
     }
+
+    private static string TruncateTypeId(string typeId)
+        => typeId.Length <= 120 ? typeId : typeId[..120];
 
     private static DocumentFileLoadResult Failure(string fileName, string error)
         => new(fileName, null, error);

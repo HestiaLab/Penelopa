@@ -52,6 +52,107 @@ window.penelopa.writeStorage = function (key, value) {
         return { ok: false, error: describeStorageError(error) };
     }
 };
+// IndexedDB 只保存当前文档的 journal；localStorage 仍是显式保存的唯一来源。
+// 打开/事务失败通过结果对象返回，自动保存失败不得击穿编辑循环。
+const journalDatabaseName = 'penelopa';
+const journalStoreName = 'journal';
+const journalKey = 'penelopa.document';
+let journalDatabase = null;
+function openJournalDatabase() {
+    if (journalDatabase) {
+        return journalDatabase;
+    }
+    journalDatabase = new Promise((resolve, reject) => {
+        if (typeof window.indexedDB === 'undefined' || window.indexedDB === null) {
+            reject(new Error('IndexedDB is not available'));
+            return;
+        }
+        let request;
+        try {
+            request = window.indexedDB.open(journalDatabaseName, 1);
+        }
+        catch (error) {
+            reject(error);
+            return;
+        }
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(journalStoreName)) {
+                db.createObjectStore(journalStoreName);
+            }
+        };
+        request.onsuccess = () => {
+            const db = request.result;
+            db.onversionchange = () => {
+                db.close();
+                journalDatabase = null;
+            };
+            resolve(db);
+        };
+        request.onerror = () => { var _a; return reject((_a = request.error) !== null && _a !== void 0 ? _a : new Error('IndexedDB open failed')); };
+        request.onblocked = () => reject(new Error('IndexedDB open blocked'));
+    });
+    return journalDatabase;
+}
+async function readJournalEntry(key) {
+    const db = await openJournalDatabase();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(journalStoreName, 'readonly');
+        const request = transaction.objectStore(journalStoreName).get(key);
+        request.onsuccess = () => { var _a; return resolve((_a = request.result) !== null && _a !== void 0 ? _a : null); };
+        request.onerror = () => { var _a; return reject((_a = request.error) !== null && _a !== void 0 ? _a : new Error('IndexedDB read failed')); };
+        transaction.onabort = () => { var _a; return reject((_a = transaction.error) !== null && _a !== void 0 ? _a : new Error('IndexedDB read aborted')); };
+    });
+}
+async function writeJournalEntry(entry, key) {
+    const db = await openJournalDatabase();
+    await new Promise((resolve, reject) => {
+        const transaction = db.transaction(journalStoreName, 'readwrite');
+        transaction.objectStore(journalStoreName).put(entry, key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => { var _a; return reject((_a = transaction.error) !== null && _a !== void 0 ? _a : new Error('IndexedDB write failed')); };
+        transaction.onabort = () => { var _a; return reject((_a = transaction.error) !== null && _a !== void 0 ? _a : new Error('IndexedDB write aborted')); };
+    });
+}
+async function clearJournalEntry(key) {
+    const db = await openJournalDatabase();
+    await new Promise((resolve, reject) => {
+        const transaction = db.transaction(journalStoreName, 'readwrite');
+        transaction.objectStore(journalStoreName).delete(key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => { var _a; return reject((_a = transaction.error) !== null && _a !== void 0 ? _a : new Error('IndexedDB clear failed')); };
+        transaction.onabort = () => { var _a; return reject((_a = transaction.error) !== null && _a !== void 0 ? _a : new Error('IndexedDB clear aborted')); };
+    });
+}
+window.penelopa.readJournal = async function (key = journalKey) {
+    try {
+        return { ok: true, value: await readJournalEntry(key), error: null };
+    }
+    catch (error) {
+        console.error('[Penelopa] journal read failed', error);
+        return { ok: false, value: null, error: describeStorageError(error) };
+    }
+};
+window.penelopa.writeJournal = async function (entry, key = journalKey) {
+    try {
+        await writeJournalEntry(entry, key);
+        return { ok: true, error: null };
+    }
+    catch (error) {
+        console.error('[Penelopa] journal write failed', error);
+        return { ok: false, error: describeStorageError(error) };
+    }
+};
+window.penelopa.clearJournal = async function (key = journalKey) {
+    try {
+        await clearJournalEntry(key);
+        return { ok: true, error: null };
+    }
+    catch (error) {
+        console.error('[Penelopa] journal clear failed', error);
+        return { ok: false, error: describeStorageError(error) };
+    }
+};
 // 通过临时 Blob URL 触发浏览器下载；不经过服务器，文件内容不会离开本地。
 window.penelopa.downloadTextFile = function (fileName, content) {
     const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
@@ -118,8 +219,10 @@ window.penelopa.attachFileDrop = function (rootEl, dotNetRef) {
         const tabs = rootEl.querySelectorAll('[role="tab"]');
         for (const tab of Array.from(tabs)) {
             if (((_a = tab.textContent) !== null && _a !== void 0 ? _a : '').trim() === 'Tools') {
-                // Atlas 以属性存在表示选中（aria-selected="" 也是选中）。
-                if (!tab.hasAttribute('aria-selected')) {
+                // Atlas 0.3 用 aria-selected="" 表示选中，0.4 起使用标准
+                // aria-selected="true"/"false"；两种格式都必须识别。
+                const selected = tab.getAttribute('aria-selected');
+                if (selected !== 'true' && selected !== '') {
                     tab.click();
                 }
                 return;
@@ -554,12 +657,18 @@ window.penelopa.attachPointer = function (canvasEl, dotNetRef) {
         }
     }
     function onKeyDown(e) {
+        var _a;
         // 文本编辑控件内的按键（包括 Ctrl+Z）交给控件自身处理，
         // 否则会删除图元并劫持输入框的文本撤销。
         const target = e.target;
         if (target) {
             const tag = target.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+                return;
+            }
+            // 图元树自行转发 Delete / Ctrl+Z / Ctrl+Y；window 级处理器必须让路，
+            // 否则一次按键会执行两次撤销。
+            if ((_a = target.closest) === null || _a === void 0 ? void 0 : _a.call(target, '[role="tree"]')) {
                 return;
             }
         }

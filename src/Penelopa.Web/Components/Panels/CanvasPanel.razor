@@ -108,7 +108,13 @@
     private IPrimitiveService PrimitiveService { get; set; } = null!;
 
     [Inject]
+    private DocumentEditor DocumentEditor { get; set; } = null!;
+
+    [Inject]
     private DocumentFileService DocumentFiles { get; set; } = null!;
+
+    [Inject]
+    private DocumentJournalService DocumentJournal { get; set; } = null!;
 
     [Inject]
     private IJSRuntime JS { get; set; } = null!;
@@ -228,27 +234,27 @@
     [JSInvokable]
     public void OnUndo()
     {
-        PrimitiveService.Undo();
+        DocumentEditor.Undo();
         RequestRender();
     }
 
     [JSInvokable]
     public void OnRedo()
     {
-        PrimitiveService.Redo();
+        DocumentEditor.Redo();
         RequestRender();
     }
 
     [JSInvokable]
     public void OnDelete()
     {
-        PrimitiveService.RemoveRange(PrimitiveService.GetSelection());
+        DocumentEditor.RemoveRange(PrimitiveService.GetSelection());
     }
 
     [JSInvokable]
     public void OnNudge(double deltaX, double deltaY)
     {
-        PrimitiveService.MoveSelection((float)deltaX, (float)deltaY);
+        DocumentEditor.MoveSelection((float)deltaX, (float)deltaY);
     }
 
     [JSInvokable]
@@ -321,6 +327,16 @@
             try
             {
                 DocumentFiles.Apply(result.Document);
+                var appliedDocumentId = PrimitiveService.DocumentId;
+                await DocumentJournal.NotifyDocumentReplacedAsync(
+                    appliedDocumentId,
+                    PrimitiveService.Revision);
+                if (PrimitiveService.DocumentId != appliedDocumentId)
+                {
+                    // 样品应用期间切换了会话：不要在新的活动文档上显示样品提示。
+                    return;
+                }
+
                 _sampleNotice = "Sample loaded. Select Simulate → Play.";
                 FitCanvas();
             }
@@ -407,14 +423,17 @@
     void IEditorInteractionHost.ClearSelection()
         => PrimitiveService.ClearSelection();
 
-    void IEditorInteractionHost.BeginMutation()
-        => PrimitiveService.BeginTransaction();
+    void IEditorInteractionHost.BeginMutation(string label)
+    {
+        DocumentEditor.BeginTransaction(DocumentCommands.Gesture, label);
+        DocumentEditor.RecordBeforeChange(PrimitiveService.GetSelection());
+    }
 
     void IEditorInteractionHost.CommitMutation()
-        => PrimitiveService.CommitTransaction();
+        => DocumentEditor.CommitTransaction();
 
     void IEditorInteractionHost.CancelMutation()
-        => PrimitiveService.CancelTransaction();
+        => DocumentEditor.CancelTransaction();
 
     void IEditorInteractionHost.PanByCss(float deltaX, float deltaY)
     {

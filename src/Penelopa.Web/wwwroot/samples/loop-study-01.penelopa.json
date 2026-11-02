@@ -1,9 +1,11 @@
 {
-  "Version": 2,
+  "Version": 3,
+  "DocumentId": "00000000-0000-0000-0000-000000000001",
+  "Revision": 0,
   "Primitives": [
     {
       "Id": "00000000-0000-0000-0000-000000000001",
-      "Type": "Rectangle",
+      "Type": "penelopa.rect",
       "Props": {
         "Name": "Card",
         "PosX": -300,
@@ -15,7 +17,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000002",
-      "Type": "Rectangle",
+      "Type": "penelopa.rect",
       "Props": {
         "Name": "Title",
         "PosX": 180,
@@ -27,7 +29,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000003",
-      "Type": "Rectangle",
+      "Type": "penelopa.rect",
       "Props": {
         "Name": "Subtitle A",
         "PosX": 180,
@@ -39,7 +41,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000004",
-      "Type": "Rectangle",
+      "Type": "penelopa.rect",
       "Props": {
         "Name": "Subtitle B",
         "PosX": 180,
@@ -51,8 +53,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000005",
-      "Type": "Container",
-      "Kind": "Rotation",
+      "Type": "penelopa.container.rotation",
       "Props": {
         "Name": "Disc Spin",
         "Rotation": 0
@@ -60,7 +61,7 @@
       "Children": [
         {
           "Id": "00000000-0000-0000-0000-000000000006",
-          "Type": "Circle",
+          "Type": "penelopa.circle",
           "Props": {
             "Name": "Disc",
             "CenterX": 0,
@@ -71,7 +72,7 @@
         },
         {
           "Id": "00000000-0000-0000-0000-000000000007",
-          "Type": "Circle",
+          "Type": "penelopa.circle",
           "Props": {
             "Name": "Ring",
             "CenterX": 0,
@@ -82,7 +83,7 @@
         },
         {
           "Id": "00000000-0000-0000-0000-000000000008",
-          "Type": "Circle",
+          "Type": "penelopa.circle",
           "Props": {
             "Name": "Label",
             "CenterX": 0,
@@ -93,7 +94,7 @@
         },
         {
           "Id": "00000000-0000-0000-0000-000000000009",
-          "Type": "Circle",
+          "Type": "penelopa.circle",
           "Props": {
             "Name": "Hole",
             "CenterX": 0,
@@ -104,7 +105,7 @@
         },
         {
           "Id": "00000000-0000-0000-0000-000000000010",
-          "Type": "Circle",
+          "Type": "penelopa.circle",
           "Props": {
             "Name": "Marker A",
             "CenterX": -78,
@@ -115,7 +116,7 @@
         },
         {
           "Id": "00000000-0000-0000-0000-000000000011",
-          "Type": "Circle",
+          "Type": "penelopa.circle",
           "Props": {
             "Name": "Marker B",
             "CenterX": 78,
@@ -128,7 +129,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000012",
-      "Type": "Circle",
+      "Type": "penelopa.circle",
       "Props": {
         "Name": "Pulse Halo",
         "CenterX": 196,
@@ -139,7 +140,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000013",
-      "Type": "Triangle",
+      "Type": "penelopa.triangle",
       "Props": {
         "Name": "Play Icon",
         "Vertex1X": 180,
@@ -153,7 +154,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000014",
-      "Type": "Rectangle",
+      "Type": "penelopa.rect",
       "Props": {
         "Name": "Progress Track",
         "PosX": 180,
@@ -165,7 +166,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000015",
-      "Type": "Rectangle",
+      "Type": "penelopa.rect",
       "Props": {
         "Name": "Progress Fill",
         "PosX": 180,
@@ -177,7 +178,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000016",
-      "Type": "Circle",
+      "Type": "penelopa.circle",
       "Props": {
         "Name": "Dot 1",
         "CenterX": 180,
@@ -188,7 +189,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000017",
-      "Type": "Circle",
+      "Type": "penelopa.circle",
       "Props": {
         "Name": "Dot 2",
         "CenterX": 210,
@@ -199,7 +200,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000018",
-      "Type": "Circle",
+      "Type": "penelopa.circle",
       "Props": {
         "Name": "Dot 3",
         "CenterX": 240,
@@ -210,7 +211,7 @@
     },
     {
       "Id": "00000000-0000-0000-0000-000000000019",
-      "Type": "Circle",
+      "Type": "penelopa.circle",
       "Props": {
         "Name": "Step Indicator",
         "CenterX": 180,

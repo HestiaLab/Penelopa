@@ -1,5 +1,6 @@
 using Penelopa.Core.Alignment;
 using Penelopa.Core.Primitives;
+using System.Text.Json;
 
 namespace Penelopa.Core.Services;
 
@@ -9,10 +10,37 @@ public class PrimitiveService : IPrimitiveService
     private readonly List<Primitive> _primitives = new();
     private readonly HashSet<Primitive> _selection = new();
     private readonly DocumentHistory _history;
+    private Dictionary<string, JsonElement> _extensions = new(StringComparer.Ordinal);
 
     public PrimitiveService()
+        : this(TimeProvider.System)
     {
-        _history = new DocumentHistory(this);
+    }
+
+    internal PrimitiveService(TimeProvider clock)
+    {
+        _history = new DocumentHistory(this, clock);
+    }
+
+    public Guid DocumentId { get; private set; } = Guid.NewGuid();
+
+    public long Revision { get; private set; }
+
+    public IReadOnlyDictionary<string, JsonElement> Extensions => _extensions;
+
+    internal void BumpRevision() => Revision++;
+
+    public void SetDocumentIdentity(Guid documentId, long revision)
+    {
+        DocumentId = documentId == Guid.Empty ? Guid.NewGuid() : documentId;
+        Revision = Math.Max(0, revision);
+    }
+
+    public void SetExtensions(IReadOnlyDictionary<string, JsonElement>? extensions)
+    {
+        _extensions = extensions is null
+            ? new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+            : new Dictionary<string, JsonElement>(extensions, StringComparer.Ordinal);
     }
 
     /// <summary>结构变更也通过事务边界，保证每种修改都产生可撤销条目。</summary>
@@ -36,9 +64,16 @@ public class PrimitiveService : IPrimitiveService
 
         ValidateSupportedProperties(primitive);
 
-        _history.BeginTransaction();
+        _history.BeginTransaction(DocumentCommands.Add, $"Add {Describe(primitive)}");
         _primitives.Add(primitive);
         primitive.SetOwnerRecursive(this);
+        _history.RecordStructure(new StructureChange(
+            StructureOp.Insert,
+            primitive,
+            null,
+            -1,
+            null,
+            _primitives.Count - 1));
         _history.CommitTransaction();
         RaiseChanged(DocumentChangeKind.Structure);
     }
@@ -80,9 +115,43 @@ public class PrimitiveService : IPrimitiveService
 
         ValidateSupportedProperties(child);
 
-        _history.BeginTransaction();
-        _primitives.Remove(child);
-        container.AddChild(child);
+        var toIndex = container.Children.Count;
+        var fromRootIndex = _primitives.IndexOf(child);
+        _history.BeginTransaction(
+            DocumentCommands.MoveIntoContainer,
+            "Move into container");
+        try
+        {
+            if (fromRootIndex >= 0)
+            {
+                _history.RecordStructure(new StructureChange(
+                    StructureOp.Move,
+                    child,
+                    null,
+                    fromRootIndex,
+                    container,
+                    toIndex));
+                _primitives.Remove(child);
+            }
+            else
+            {
+                _history.RecordStructure(new StructureChange(
+                    StructureOp.Insert,
+                    child,
+                    null,
+                    -1,
+                    container,
+                    toIndex));
+            }
+
+            container.AddChild(child);
+        }
+        catch
+        {
+            _history.CancelTransaction();
+            throw;
+        }
+
         _history.CommitTransaction();
         RaiseChanged(DocumentChangeKind.Structure);
     }
@@ -119,20 +188,35 @@ public class PrimitiveService : IPrimitiveService
         var index = _primitives.IndexOf(ordered[0]);
         var group = Container.CreateOffset("Group", 0f, 0f);
 
-        _history.BeginTransaction();
+        _history.BeginTransaction(
+            DocumentCommands.Group,
+            $"Group {ordered.Count} primitives");
         try
         {
-            foreach (var primitive in ordered)
-            {
-                _primitives.Remove(primitive);
-            }
-
-            // 先建立文档归属，AddChild 的跨文档校验才能接受已有归属的子项。
+            _history.RecordStructure(new StructureChange(
+                StructureOp.Insert,
+                group,
+                null,
+                -1,
+                null,
+                index));
             _primitives.Insert(index, group);
             group.SetOwnerRecursive(this);
 
             foreach (var primitive in ordered)
             {
+                var fromIndex = _primitives.IndexOf(primitive);
+                var toIndex = group.Children.Count;
+                _history.RecordStructure(new StructureChange(
+                    StructureOp.Move,
+                    primitive,
+                    null,
+                    fromIndex,
+                    group,
+                    toIndex));
+
+                _primitives.RemoveAt(fromIndex);
+                primitive.SetOwnerRecursive(null);
                 group.AddChild(primitive);
             }
 
@@ -171,21 +255,38 @@ public class PrimitiveService : IPrimitiveService
         var index = _primitives.IndexOf(container);
         var children = container.Children.ToList();
 
-        _history.BeginTransaction();
+        _history.BeginTransaction(DocumentCommands.Ungroup, "Ungroup container");
         try
         {
-            foreach (var child in children)
+            for (var childIndex = 0; childIndex < children.Count; childIndex++)
             {
+                var child = children[childIndex];
+                var fromIndex = IndexOf(container.Children, child);
+                var toIndex = index + childIndex;
+                _history.RecordStructure(new StructureChange(
+                    StructureOp.Move,
+                    child,
+                    container,
+                    fromIndex,
+                    null,
+                    toIndex));
+
                 container.RemoveChild(child);
+                _primitives.Insert(toIndex, child);
+                child.SetOwnerRecursive(this);
             }
+
+            var containerIndex = _primitives.IndexOf(container);
+            _history.RecordStructure(new StructureChange(
+                StructureOp.Remove,
+                container,
+                null,
+                containerIndex,
+                null,
+                -1));
 
             _primitives.Remove(container);
             container.SetOwnerRecursive(null);
-            _primitives.InsertRange(index, children);
-            foreach (var child in children)
-            {
-                child.SetOwnerRecursive(this);
-            }
 
             _selection.Clear();
             foreach (var child in children)
@@ -210,25 +311,52 @@ public class PrimitiveService : IPrimitiveService
     /// <summary>批量删除：一次事务、一个撤销条目；已失效的选区（含被删除容器的后代）一并清理。</summary>
     public void RemoveRange(IEnumerable<Primitive> primitives)
     {
-        var targets = primitives
+        var candidates = primitives
             .Where(IsInDocument)
             .Distinct()
             .ToList();
-        if (targets.Count == 0)
+        if (candidates.Count == 0)
         {
             return;
         }
 
-        _history.BeginTransaction();
+        // 祖先与后代同时出现时只删除祖先，避免把已被移除的子树再记录一次。
+        var targets = candidates
+            .Where(primitive => !candidates.Any(
+                other => !ReferenceEquals(other, primitive) && IsDescendantOf(primitive, other)))
+            .ToList();
+
+        _history.BeginTransaction(
+            DocumentCommands.Delete,
+            $"Delete {targets.Count} {(targets.Count == 1 ? "primitive" : "primitives")}");
         foreach (var primitive in targets)
         {
             if (primitive.Parent is Container owner)
             {
+                var index = IndexOf(owner.Children, primitive);
+                _history.RecordStructure(new StructureChange(
+                    StructureOp.Remove,
+                    primitive,
+                    owner,
+                    index,
+                    null,
+                    -1));
                 owner.RemoveChild(primitive);
             }
-            else if (_primitives.Remove(primitive))
+            else
             {
-                primitive.SetOwnerRecursive(null);
+                var index = _primitives.IndexOf(primitive);
+                _history.RecordStructure(new StructureChange(
+                    StructureOp.Remove,
+                    primitive,
+                    null,
+                    index,
+                    null,
+                    -1));
+                if (_primitives.Remove(primitive))
+                {
+                    primitive.SetOwnerRecursive(null);
+                }
             }
         }
 
@@ -293,21 +421,46 @@ public class PrimitiveService : IPrimitiveService
 
     public bool CanRedo => _history.CanRedo;
 
+    public string? UndoLabel => _history.UndoLabel;
+
+    public string? RedoLabel => _history.RedoLabel;
+
+    public int UndoDepth => _history.UndoDepth;
+
+    public int RedoDepth => _history.RedoDepth;
+
+    public long EstimatedBytes => _history.EstimatedBytes;
+
+    public void ConfigureHistoryBudget(int maxEntries, long maxBytes)
+        => _history.ConfigureBudget(maxEntries, maxBytes);
+
     public DocumentHistoryState CaptureHistoryState() => _history.CaptureState();
 
     public void RestoreHistoryState(DocumentHistoryState state) => _history.RestoreState(state);
 
+    public void EndCoalescing() => _history.EndCoalescing();
+
+    public void MarkConfigurationChanged() => Revision++;
+
     /// <summary>开始事务边界：所有文档修改（结构/对齐/属性/手势）共用。</summary>
-    public void BeginTransaction() => _history.BeginTransaction();
+    public void BeginTransaction() => _history.BeginTransaction(DocumentCommands.Edit, "Edit");
+
+    /// <summary>使用指定命令 id 与标签开始事务。</summary>
+    public void BeginTransaction(string commandId, string label)
+        => _history.BeginTransaction(commandId, label);
+
+    /// <summary>直接修改属性前记录当前值（手势宿主使用）。</summary>
+    public void RecordBeforeChange(IEnumerable<Primitive> primitives)
+        => _history.RecordBefore(primitives);
+
+    internal void AttachConfigHistory(IHistoryConfigParticipant config)
+        => _history.AttachConfig(config);
 
     /// <summary>提交事务边界，生成一个撤销条目。</summary>
     public void CommitTransaction() => _history.CommitTransaction();
 
     /// <summary>取消事务边界并精确恢复到事务前状态（手势取消）。</summary>
     public void CancelTransaction() => _history.CancelTransaction();
-
-    /// <summary>画布手势开始前捕获当前状态（兼容旧调用，等价于立即生成撤销条目）。</summary>
-    public void CaptureForGesture() => _history.Capture();
 
     /// <summary>对齐当前选区；修改可撤销，已对齐时不产生历史条目。</summary>
     public bool Align(AlignType type)
@@ -318,7 +471,8 @@ public class PrimitiveService : IPrimitiveService
             return false;
         }
 
-        _history.BeginTransaction();
+        _history.BeginTransaction(DocumentCommands.Align, $"Align {type}");
+        _history.RecordBefore(selection);
         var changed = AlignExtensions.Align<Primitive>(selection, type);
         if (!changed)
         {
@@ -383,15 +537,24 @@ public class PrimitiveService : IPrimitiveService
         }
 
         var before = properties.Select(property => property.GetBoxedValue()).ToList();
-        _history.BeginTransaction();
-        foreach (var property in properties)
+        _history.BeginTransaction(DocumentCommands.SetProperty, $"Set {propertyName}");
+        _history.RecordBefore(distinctOwners);
+        try
         {
-            if (!property.TrySetText(text, out error))
+            foreach (var property in properties)
             {
-                RestoreValues(properties, before);
-                _history.DiscardTransaction();
-                return false;
+                if (!property.TrySetText(text, out error))
+                {
+                    RestoreValues(properties, before);
+                    _history.DiscardTransaction();
+                    return false;
+                }
             }
+        }
+        catch
+        {
+            _history.CancelTransaction();
+            throw;
         }
 
         if (before.SequenceEqual(properties.Select(property => property.GetBoxedValue())))
@@ -416,7 +579,8 @@ public class PrimitiveService : IPrimitiveService
             return false;
         }
 
-        _history.BeginTransaction();
+        _history.BeginTransaction(DocumentCommands.MoveSelection, "Move selection");
+        _history.RecordBefore(selection);
         foreach (var primitive in selection)
         {
             primitive.Translate(deltaX, deltaY);
@@ -435,6 +599,7 @@ public class PrimitiveService : IPrimitiveService
 
     public void ClearSelection()
     {
+        _history.EndCoalescing();
         _selection.Clear();
         RaiseChanged(DocumentChangeKind.Selection);
     }
@@ -453,6 +618,7 @@ public class PrimitiveService : IPrimitiveService
     /// <summary>所有选择入口统一规范化：祖先已选中时排除其后代，避免双重变换。</summary>
     private void ReplaceSelection(IEnumerable<Primitive> primitives)
     {
+        _history.EndCoalescing();
         var normalized = NormalizeSelection(primitives);
         _selection.Clear();
         foreach (var primitive in normalized)
@@ -495,6 +661,101 @@ public class PrimitiveService : IPrimitiveService
 
         return false;
     }
+
+    private static int IndexOf(IReadOnlyList<Primitive> list, Primitive item)
+    {
+        for (var index = 0; index < list.Count; index++)
+        {
+            if (ReferenceEquals(list[index], item))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>历史应用使用的根列表引用；调用方不得通过它修改结构。</summary>
+    internal IReadOnlyList<Primitive> RootsInternal => _primitives;
+
+    internal void InsertRootInternal(Primitive node, int index)
+    {
+        if ((uint)index > (uint)_primitives.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
+        _primitives.Insert(index, node);
+        node.SetOwnerRecursive(this);
+    }
+
+    internal void RemoveRootInternal(Primitive node)
+    {
+        if (_primitives.Remove(node))
+        {
+            node.SetOwnerRecursive(null);
+        }
+    }
+
+    internal void InsertChildInternal(Container parent, Primitive child, int index)
+    {
+        if (!IsInDocument(parent))
+        {
+            throw new InvalidOperationException("The container must belong to this document.");
+        }
+
+        parent.InsertChildAt(child, index);
+        child.SetOwnerRecursive(this);
+    }
+
+    internal void RestoreSelectionInternal(IReadOnlyList<Primitive> selection)
+    {
+        var normalized = NormalizeSelection(selection.Where(IsInDocument));
+        _selection.Clear();
+        foreach (var primitive in normalized)
+        {
+            _selection.Add(primitive);
+        }
+    }
+
+    internal void InstallDocumentState(
+        IReadOnlyList<Primitive> roots,
+        IReadOnlyList<Primitive> selection)
+    {
+        var previous = _primitives.ToArray();
+        _primitives.Clear();
+        _primitives.AddRange(roots);
+        foreach (var root in previous)
+        {
+            if (!_primitives.Contains(root))
+            {
+                root.SetOwnerRecursive(null);
+            }
+        }
+
+        foreach (var root in _primitives)
+        {
+            root.SetOwnerRecursive(this);
+        }
+
+        RestoreSelectionInternal(selection);
+    }
+
+    /// <summary>撤销/重做/恢复状态后统一发出一次文档变更通知。</summary>
+    internal void NotifyHistoryApplied()
+        => RaiseChanged(
+            DocumentChangeKind.Structure
+            | DocumentChangeKind.Geometry
+            | DocumentChangeKind.Selection);
+
+    private static string Describe(Primitive primitive) => primitive switch
+    {
+        Container container => $"{container.Kind} container",
+        Circle => "circle",
+        Rectangle => "rectangle",
+        Triangle => "triangle",
+        _ => "primitive",
+    };
 
     /// <summary>拒绝在历史/序列化无法表达的属性子类型进入文档。</summary>
     private static void ValidateSupportedProperties(Primitive primitive)

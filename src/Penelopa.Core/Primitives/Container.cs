@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Penelopa.Core.Alignment;
+using Penelopa.Core.Simulation;
 
 namespace Penelopa.Core.Primitives;
 
@@ -77,16 +78,20 @@ public sealed class Container : Primitive
     /// <summary>
     /// 施加于子图元的变换（容器空间 → 父空间）。属性是真源，矩阵是 TRS 组合，面板编辑即时生效。
     /// </summary>
-    public Transform LocalTransform
+    public Transform LocalTransform => GetLocalTransform();
+
+    /// <summary>使用生效值源计算局部变换；overlay 可驱动容器的偏移/旋转/缩放。</summary>
+    public Transform GetLocalTransform(IEffectiveValueSource? values = null)
     {
-        get
-        {
-            // 将缩放钳位远离零：零或近零缩放使变换奇异，Transform.Invert() 会抛异常导致子图元拖拽/缩放崩溃。
-            // 属性面板仍保留原始值；生效的变换始终可逆。
-            return Transform.Translate(OffsetX.Value, OffsetY.Value)
-                .Multiply(Transform.Rotate(Rotation.Value))
-                .Multiply(Transform.Scale(ClampScale(ScaleX.Value), ClampScale(ScaleY.Value)));
-        }
+        // 将缩放钳位远离零：零或近零缩放使变换奇异，Transform.Invert() 会抛异常导致子图元拖拽/缩放崩溃。
+        // 属性面板仍保留原始值；生效的变换始终可逆。
+        return Transform.Translate(
+                Effective(values, OffsetX),
+                Effective(values, OffsetY))
+            .Multiply(Transform.Rotate(Effective(values, Rotation)))
+            .Multiply(Transform.Scale(
+                ClampScale(Effective(values, ScaleX)),
+                ClampScale(Effective(values, ScaleY))));
     }
 
     /// <summary>钳位缩放幅值，保证局部变换可逆。</summary>
@@ -114,7 +119,13 @@ public sealed class Container : Primitive
 
     /// <summary>添加子图元，将其重新关联到本容器的局部空间。</summary>
     /// <remarks>子图元继承容器的文档归属；属于其他文档的图元会被拒绝。</remarks>
-    public void AddChild(Primitive child)
+    internal void AddChild(Primitive child)
+    {
+        InsertChildAt(child, _children.Count);
+    }
+
+    /// <summary>按索引插入子图元；索引语义为插入后的兄弟位置。</summary>
+    internal void InsertChildAt(Primitive child, int index)
     {
         if (child.Parent is not null)
         {
@@ -126,13 +137,18 @@ public sealed class Container : Primitive
             throw new InvalidOperationException("Cannot attach a primitive from another document.");
         }
 
+        if ((uint)index > (uint)_children.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
         child.Parent = this;
-        _children.Add(child);
+        _children.Insert(index, child);
         child.SetOwnerRecursive(Owner);
     }
 
     /// <summary>移除子图元，将其脱离到根级别。</summary>
-    public void RemoveChild(Primitive child)
+    internal void RemoveChild(Primitive child)
     {
         if (_children.Remove(child))
         {
@@ -143,11 +159,19 @@ public sealed class Container : Primitive
 
     /// <summary>将包围盒从本容器空间变换到父空间。</summary>
     public Box TransformBoundsToParent(Box local)
-        => TransformBox(local, LocalTransform);
+        => TransformBoundsToParent(local, null);
+
+    /// <summary>使用生效值源将包围盒从本容器空间变换到父空间。</summary>
+    public Box TransformBoundsToParent(Box local, IEffectiveValueSource? values)
+        => TransformBox(local, GetLocalTransform(values));
 
     /// <summary>将包围盒从本容器的父空间变换到本容器空间（只应用本层变换）。</summary>
     public Box ToLocalBounds(Box parent)
-        => TransformBox(parent, LocalTransform.Invert());
+        => ToLocalBounds(parent, null);
+
+    /// <summary>使用生效值源将包围盒从本容器的父空间变换到本容器空间。</summary>
+    public Box ToLocalBounds(Box parent, IEffectiveValueSource? values)
+        => TransformBox(parent, GetLocalTransform(values).Invert());
 
     /// <summary>将世界空间的包围盒转换到本容器空间（沿祖先链逐级求逆）。</summary>
     public Box WorldToLocalBounds(Box world)
@@ -182,16 +206,22 @@ public sealed class Container : Primitive
 
     /// <summary>将世界空间点转换为本容器空间的点。</summary>
     public Point ToLocalPoint(Point world)
+        => ToLocalPoint(world, null);
+
+    /// <summary>使用生效值将世界空间点转换为本容器空间的点。</summary>
+    public Point ToLocalPoint(Point world, IEffectiveValueSource? values)
     {
-        var point = Parent is Container parent ? parent.ToLocalPoint(world) : world;
-        return LocalTransform.Invert().ApplyToPoint(point);
+        var point = Parent is Container parent
+            ? parent.ToLocalPoint(world, values)
+            : world;
+        return GetLocalTransform(values).Invert().ApplyToPoint(point);
     }
 
     /// <inheritdoc/>
-    protected override Box GetLocalBoundingBox()
+    protected override Box GetLocalBoundingBox(IEffectiveValueSource? values)
     {
         // 子图元在本容器空间中；施加局部变换得到该空间中的内容范围
-        return TransformBox(UnionChildrenBounds(), LocalTransform);
+        return TransformBox(UnionChildrenBounds(values), GetLocalTransform(values));
     }
 
     /// <inheritdoc/>
@@ -204,7 +234,7 @@ public sealed class Container : Primitive
     /// <inheritdoc/>
     protected override Box SetBoundsLocal(Box bounds, Point anchor)
     {
-        var current = GetLocalBoundingBox();
+        var current = GetLocalBoundingBox(null);
         float scaleX = ScaleFactor(current.Width, bounds.Width);
         float scaleY = ScaleFactor(current.Height, bounds.Height);
 
@@ -224,15 +254,20 @@ public sealed class Container : Primitive
         OffsetY.Value = deltaY + OffsetY.Value * scaleY;
         ScaleX.Value *= scaleX;
         ScaleY.Value *= scaleY;
-        return GetLocalBoundingBox();
+        return GetLocalBoundingBox(null);
     }
 
     /// <inheritdoc/>
     protected override bool ContainsLocalPoint(Point point)
+        => ContainsLocalPoint(point, null);
+
+    protected override bool ContainsLocalPoint(
+        Point point,
+        IEffectiveValueSource? values)
     {
         foreach (var child in _children)
         {
-            if (child.ContainsParentLocalPoint(point))
+            if (child.ContainsParentLocalPoint(point, values))
             {
                 return true;
             }
@@ -241,7 +276,7 @@ public sealed class Container : Primitive
         return false;
     }
 
-    private Box UnionChildrenBounds()
+    private Box UnionChildrenBounds(IEffectiveValueSource? values)
     {
         if (_children.Count == 0)
         {
@@ -252,7 +287,7 @@ public sealed class Container : Primitive
         float maxX = float.MinValue, maxY = float.MinValue;
         foreach (var child in _children)
         {
-            var box = child.GetParentLocalBoundingBox();
+            var box = child.GetParentLocalBoundingBox(values);
             minX = MathF.Min(minX, box.MinX);
             minY = MathF.Min(minY, box.MinY);
             maxX = MathF.Max(maxX, box.MaxX);
