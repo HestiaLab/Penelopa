@@ -23,7 +23,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '6.0.x'
+          dotnet-version: '10.0.401'
 
       # Penelopa links the SkiaSharp native assets into dotnet.wasm, so the
       # wasm-tools workload is required (unlike Atlas.Demo, which has no
