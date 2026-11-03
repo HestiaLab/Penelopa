@@ -15,11 +15,11 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/images/screenshot-dark.png">
-  <img src="docs/assets/images/screenshot-light.png" alt="Penelopa 加载 Loop Study 01 后的六区域工作区：Tools、Primitives、Diagram 画布、Properties 与底部状态栏" width="1440">
+  <img src="docs/assets/images/screenshot-light.png" alt="Penelopa 加载 Orbit Study 01 后的六区域工作区：Primitives 树、Diagram 画布、Properties 与底部状态栏" width="1440">
 </picture>
 
 Penelopa 在可停靠工作区中提供 SkiaSharp 画布、图元树、六方向对齐与强类型属性编辑器；编辑页最多同时打开 3 个文档标签，各自拥有独立历史与仿真配置。独立的 `/simulation` 页面把 Float 属性编排为关键帧轨道，用于设计验证与调试。
-内置 Loop Study 01 示例（5 条轨道、14 个关键帧、9 秒）可一键加载并播放。工作区基于 Atlas.Blazor 0.4.0，图元树使用 Astrea.Components 0.9.0。
+内置 Orbit Study 01 示例（62 个图元、9 条轨道、38 个关键帧、12 秒，覆盖六种插值）可一键加载并播放。工作区基于 Atlas.Blazor 0.4.0，图元树使用 Astrea.Components 0.9.0。
 
 > **仅支持 v3 文档：** Load 与 Import 只接受版本 3 的 `.penelopa.json` 文档；v1、v2 与缺失版本文档会被拒绝并给出原因。文档使用稳定 type id、`DocumentId`/`Revision`，未知 `Extensions` 段原样保留。详见[软件需求规格说明书](docs/软件需求规格说明书.md)。
 >
@@ -31,17 +31,18 @@ Penelopa 在可停靠工作区中提供 SkiaSharp 画布、图元树、六方向
 
 ## 界面预览
 
-![正在播放 Loop Study 01 的仿真工作区](docs/assets/images/simulation.png)
+![正在播放 Orbit Study 01 的仿真工作区](docs/assets/images/simulation.png)
 
-仿真工作区播放内置的 9 秒 Loop Study 01 示例，包含 5 条关键帧轨道。
+仿真工作区播放内置的 12 秒 Orbit Study 01 示例，包含 9 条关键帧轨道和六种插值。
 
 ## 试用示例
 
 1. 打开在线演示。
-2. 在空编辑器中选择 **Load Loop Study 01**。
-3. 选择 **Simulate**，再按 **Play**。
+2. 在空编辑器中选择 **Load Orbit Study 01**。
+3. 选中琥珀色彗星查看三角顶点与双轨，或 Ctrl+点击轨道图元体验多选/对齐。
+4. 选择 **Simulate**，再按 **Play**，观察六种插值与 12 秒循环。
 
-> `Load Loop Study 01` 只在空画布出现。如果浏览器里已保存过文档，请先清除该站点数据；示例文件随应用发布在 `src/Penelopa.Web/wwwroot/samples/loop-study-01.penelopa.json`。
+> `Load Orbit Study 01` 只在空画布出现。如果浏览器里已保存过文档，请先清除该站点数据；示例文件随应用发布在 `src/Penelopa.Web/wwwroot/samples/orbit-study-01.penelopa.json`。
 
 ## 快速开始
 

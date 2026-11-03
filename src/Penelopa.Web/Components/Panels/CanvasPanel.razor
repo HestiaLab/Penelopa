@@ -57,15 +57,15 @@
                 <PenelopaIcon Name="shapes" Size="24" />
                 <h2 id="penelopa-canvas-empty-title">Start with a sample</h2>
                 <p>
-                    Load Loop Study 01, a 9-second media-player demo with 5 tracks and
-                    14 keyframes.
+                    Load Orbit Study 01, a 12-second astronomical clock with 9 tracks and
+                    six interpolation modes.
                 </p>
                 <button type="button"
                         class="penelopa-action is-primary penelopa-sample-button"
                         disabled="@_sampleBusy"
-                        @onclick="LoadSampleAsync">@(_sampleBusy ? "Loading…" : "Load Loop Study 01")</button>
+                        @onclick="LoadSampleAsync">@(_sampleBusy ? "Loading…" : "Load Orbit Study 01")</button>
                 <p class="penelopa-canvas-empty-hint">
-                    Or add a Circle, Rectangle, or Triangle from Tools.
+                    Select the amber comet, Ctrl-click the orbit to multi-select, or press Play.
                 </p>
             </div>
         </section>
@@ -373,7 +373,7 @@
                     return;
                 }
 
-                _sampleNotice = "Sample loaded. Select Simulate → Play.";
+                _sampleNotice = "Sample loaded. Select the comet or press Play.";
                 FitCanvas();
             }
             finally

@@ -26,7 +26,7 @@ public sealed record DocumentExportPayload(string FileName, string Json);
 public sealed class DocumentFileService
 {
     public const string FileExtension = ".json";
-    public const string SampleFileName = "loop-study-01.penelopa.json";
+    public const string SampleFileName = "orbit-study-01.penelopa.json";
     public const string SamplePath = "samples/" + SampleFileName;
 
     private readonly HttpClient _http;
