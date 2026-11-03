@@ -21,10 +21,22 @@
          role="application"
          aria-label="Drawing canvas"
          aria-describedby="penelopa-canvas-help">
-        <SKGLView @ref="_glView"
-                  EnableRenderLoop="false"
-                  OnPaintSurface="OnPaintSurface"
-                  style="width: 100%; height: 100%;" />
+        @if (_canvasMode == CanvasMode.WebGL)
+        {
+            <SKGLView @ref="_glView"
+                      EnableRenderLoop="false"
+                      OnPaintSurface="OnPaintGLSurface"
+                      style="width: 100%; height: 100%;" />
+        }
+        else if (_canvasMode == CanvasMode.Raster)
+        {
+            @* WebGL 不可用时降级到 CPU 光栅：SKGLView 拿不到上下文会抛
+               NullReferenceException，并连带整个页面进入错误页。 *@
+            <SKCanvasView @ref="_rasterView"
+                          EnableRenderLoop="false"
+                          OnPaintSurface="OnPaintSurface"
+                          style="width: 100%; height: 100%;" />
+        }
         <button type="button"
                 class="penelopa-action is-small penelopa-canvas-fit"
                 title="Fit content to viewport"
@@ -91,7 +103,9 @@
     private DocumentState _state = DocumentState.Empty;
     private readonly EditorInteractionController _controller;
     private double _dpr = 1;
+    private CanvasMode _canvasMode = CanvasMode.Pending;
     private SKGLView? _glView;
+    private SKCanvasView? _rasterView;
     private DotNetObjectReference<CanvasPanel>? _dprRef;
     private ElementReference _canvasElement;
     private IJSObjectReference? _pointerHandle;
@@ -132,6 +146,27 @@
         PrimitiveService.Changed += HandleDocumentChanged;
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        // 在首帧前决定后端，避免 SKGLView 先挂载再失败。
+        _canvasMode = await ResolveCanvasModeAsync();
+    }
+
+    private async Task<CanvasMode> ResolveCanvasModeAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<bool>("penelopa.supportsWebGL")
+                ? CanvasMode.WebGL
+                : CanvasMode.Raster;
+        }
+        catch (JSException)
+        {
+            return CanvasMode.Raster;
+        }
+    }
+
     private void HandleDocumentChanged(DocumentChange change)
     {
         _state = change.State;
@@ -156,6 +191,7 @@
         if (!_disposed)
         {
             _glView?.Invalidate();
+            _rasterView?.Invalidate();
         }
     }
 
@@ -385,7 +421,7 @@
         StateHasChanged();
     }
 
-    private void OnPaintSurface(SKPaintGLSurfaceEventArgs e)
+    private void OnPaintGLSurface(SKPaintGLSurfaceEventArgs e)
     {
         if (_disposed)
         {
@@ -393,6 +429,23 @@
         }
 
         _renderer.Render(e.Surface.Canvas, e.Info, (float)_dpr, _state.Roots, _state.Selection);
+    }
+
+    private void OnPaintSurface(SKPaintSurfaceEventArgs e)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _renderer.Render(e.Surface.Canvas, e.Info, (float)_dpr, _state.Roots, _state.Selection);
+    }
+
+    private enum CanvasMode
+    {
+        Pending,
+        WebGL,
+        Raster,
     }
 
     IReadOnlyList<Primitive> IEditorInteractionHost.GetSelection()

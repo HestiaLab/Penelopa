@@ -23,6 +23,33 @@ function invoke(dotNetRef, methodName, ...args) {
 window.penelopa.getDpr = function () {
     return window.devicePixelRatio || 1;
 };
+// SkiaSharp 的 SKGLView 在拿不到 WebGL 上下文时会抛 NullReferenceException
+// 并带走整个页面；渲染前先用同样的属性探测，失败则降级到 CPU 光栅视图。
+window.penelopa.supportsWebGL = function () {
+    var _a, _b;
+    try {
+        const probe = document.createElement('canvas');
+        const attributes = {
+            alpha: true,
+            depth: true,
+            stencil: true,
+            antialias: true,
+            premultipliedAlpha: true,
+            preserveDrawingBuffer: false,
+            failIfMajorPerformanceCaveat: false,
+        };
+        const context = (_a = probe.getContext('webgl2', attributes)) !== null && _a !== void 0 ? _a : probe.getContext('webgl', attributes);
+        if (!context) {
+            return false;
+        }
+        // 不为探测占用浏览器有限的 WebGL 上下文名额。
+        (_b = context.getExtension('WEBGL_lose_context')) === null || _b === void 0 ? void 0 : _b.loseContext();
+        return true;
+    }
+    catch (_c) {
+        return false;
+    }
+};
 // localStorage 访问失败（配额、隐私模式、安全限制）不应作为未处理 JS 异常
 // 穿过互操作边界；返回结果对象，由 .NET 边界显示安全摘要。
 function describeStorageError(error) {

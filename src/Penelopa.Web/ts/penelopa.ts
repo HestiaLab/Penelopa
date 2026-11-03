@@ -78,6 +78,7 @@ interface DropZoneHandle {
 
 interface PenelopaNamespace {
     getDpr(): number;
+    supportsWebGL(): boolean;
     watchDpr(dotNetRef: DotNetRef): DprWatchHandle;
     attachPointer(canvasEl: HTMLElement, dotNetRef: DotNetRef): PointerLayerHandle;
     attachFileDrop(rootEl: HTMLElement, dotNetRef: DotNetRef): DropZoneHandle;
@@ -126,6 +127,33 @@ function invoke(dotNetRef: DotNetRef, methodName: string, ...args: unknown[]): v
 
 window.penelopa.getDpr = function (): number {
     return window.devicePixelRatio || 1;
+};
+
+// SkiaSharp 的 SKGLView 在拿不到 WebGL 上下文时会抛 NullReferenceException
+// 并带走整个页面；渲染前先用同样的属性探测，失败则降级到 CPU 光栅视图。
+window.penelopa.supportsWebGL = function (): boolean {
+    try {
+        const probe = document.createElement('canvas');
+        const attributes: WebGLContextAttributes = {
+            alpha: true,
+            depth: true,
+            stencil: true,
+            antialias: true,
+            premultipliedAlpha: true,
+            preserveDrawingBuffer: false,
+            failIfMajorPerformanceCaveat: false,
+        };
+        const context = probe.getContext('webgl2', attributes)
+            ?? probe.getContext('webgl', attributes);
+        if (!context) {
+            return false;
+        }
+        // 不为探测占用浏览器有限的 WebGL 上下文名额。
+        context.getExtension('WEBGL_lose_context')?.loseContext();
+        return true;
+    } catch {
+        return false;
+    }
 };
 
 // localStorage 访问失败（配额、隐私模式、安全限制）不应作为未处理 JS 异常

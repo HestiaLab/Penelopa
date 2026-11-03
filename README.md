@@ -55,7 +55,7 @@ dotnet test Penelopa.sln --no-build --no-restore
 dotnet run --project src/Penelopa.Web --no-build --urls http://127.0.0.1:5170
 ```
 
-本机实测（Windows，.NET 10.0.401）：build 0 警告 0 错误；630 项 .NET 测试、35 项 JS 测试、77 项常规 E2E 与 5 项性能基准（Release，空闲主机）通过；Release publish 成功。首次 Debug 构建约 40 秒，Release 含 WASM 原生链接约 60 秒（不含还原）。应用默认地址为 `https://localhost:7162`，也可用 `--urls` 覆盖（上例为 5170）。
+本机实测（Windows，.NET 10.0.401）：build 0 警告 0 错误；630 项 .NET 测试、38 项 JS 测试、78 项常规 E2E 与 5 项性能基准（Release，空闲主机）通过；Release publish 成功。首次 Debug 构建约 40 秒，Release 含 WASM 原生链接约 60 秒（不含还原）。应用默认地址为 `https://localhost:7162`，也可用 `--urls` 覆盖（上例为 5170）。
 
 应用是纯静态 WebAssembly 站点，不需要服务器或数据库。工具链、质量门禁与依赖策略见[软件开发计划](docs/软件开发计划.md)与[软件测试规范](docs/软件测试规范.md)。
 
