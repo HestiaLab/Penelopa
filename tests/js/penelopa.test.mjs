@@ -87,6 +87,10 @@ function createHarness() {
     visibilityState: 'visible',
     addEventListener: addListener(documentListeners),
     removeEventListener: removeListener(documentListeners),
+    createElement: (tagName) => ({
+      tagName,
+      getContext: () => null,
+    }),
   };
   class ResizeObserver {
     observe() {}
@@ -302,6 +306,56 @@ test('pointer down focuses the canvas for keyboard editing', () => {
   });
 
   assert.equal(harness.isFocused(), true);
+});
+
+test('supportsWebGL is false when neither WebGL context can be created', () => {
+  const harness = createHarness();
+  harness.document.createElement = () => ({
+    getContext: () => null,
+  });
+
+  assert.equal(harness.window.penelopa.supportsWebGL(), false);
+});
+
+test('supportsWebGL prefers WebGL2, uses SkiaSharp attributes, and releases the context', () => {
+  const harness = createHarness();
+  const requests = [];
+  let released = false;
+  const context = {
+    getExtension(name) {
+      return name === 'WEBGL_lose_context'
+        ? { loseContext: () => { released = true; } }
+        : null;
+    },
+  };
+  harness.document.createElement = () => ({
+    getContext(type, attributes) {
+      requests.push({ type, attributes });
+      return type === 'webgl2' ? context : null;
+    },
+  });
+
+  assert.equal(harness.window.penelopa.supportsWebGL(), true);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].type, 'webgl2');
+  assert.equal(requests[0].attributes.stencil, true);
+  assert.equal(requests[0].attributes.antialias, true);
+  assert.equal(released, true);
+});
+
+test('supportsWebGL falls back to WebGL1 and reports getContext failures as unsupported', () => {
+  const harness = createHarness();
+  harness.document.createElement = () => ({
+    getContext: (type) => (type === 'webgl' ? { getExtension: () => null } : null),
+  });
+  assert.equal(harness.window.penelopa.supportsWebGL(), true);
+
+  harness.document.createElement = () => ({
+    getContext() {
+      throw new Error('WebGL blocked');
+    },
+  });
+  assert.equal(harness.window.penelopa.supportsWebGL(), false);
 });
 
 test('DPR watcher notifies, re-arms, and dispose removes the listener', () => {

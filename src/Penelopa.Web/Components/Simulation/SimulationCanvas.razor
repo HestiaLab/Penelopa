@@ -13,10 +13,21 @@
     <div class="penelopa-canvas-visual"
          role="img"
          aria-label="Simulation canvas showing the animated primitives">
-        <SKGLView @ref="_glView"
-                  EnableRenderLoop="@RenderLoopEnabled"
-                  OnPaintSurface="OnPaintSurface"
-                  style="width: 100%; height: 100%;" />
+        @if (_canvasMode == CanvasMode.WebGL)
+        {
+            <SKGLView @ref="_glView"
+                      EnableRenderLoop="@RenderLoopEnabled"
+                      OnPaintSurface="OnPaintGLSurface"
+                      style="width: 100%; height: 100%;" />
+        }
+        else if (_canvasMode == CanvasMode.Raster)
+        {
+            @* 与编辑器画布一致：没有 WebGL 时退回 CPU 光栅，避免 SKGLView 空引用。 *@
+            <SKCanvasView @ref="_rasterView"
+                          EnableRenderLoop="@RenderLoopEnabled"
+                          OnPaintSurface="OnPaintSurface"
+                          style="width: 100%; height: 100%;" />
+        }
     </div>
     <button type="button"
             class="penelopa-action is-small penelopa-canvas-fit"
@@ -31,7 +42,9 @@
 @code {
     private readonly CanvasRenderer _renderer = new();
     private double _dpr = 1;
+    private CanvasMode _canvasMode = CanvasMode.Pending;
     private SKGLView? _glView;
+    private SKCanvasView? _rasterView;
     private DotNetObjectReference<SimulationCanvas>? _dprRef;
     private IJSObjectReference? _dprWatchHandle;
     private bool _disposed;
@@ -69,6 +82,21 @@
 
     [Inject]
     private IJSRuntime JS { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        try
+        {
+            _canvasMode = await JS.InvokeAsync<bool>("penelopa.supportsWebGL")
+                ? CanvasMode.WebGL
+                : CanvasMode.Raster;
+        }
+        catch (JSException)
+        {
+            _canvasMode = CanvasMode.Raster;
+        }
+    }
 
     protected override void OnParametersSet()
     {
@@ -116,6 +144,7 @@
         if (!_disposed)
         {
             _glView?.Invalidate();
+            _rasterView?.Invalidate();
         }
     }
 
@@ -130,17 +159,32 @@
     /// <summary>实际 SKGLView paint 回调次数；仅供性能基准读取，不参与渲染。</summary>
     public int PaintCount => Interlocked.CompareExchange(ref _paintCount, 0, 0);
 
-    private void OnPaintSurface(SKPaintGLSurfaceEventArgs e)
+    private void OnPaintGLSurface(SKPaintGLSurfaceEventArgs e)
     {
         if (_disposed)
         {
             return;
         }
 
+        Render(e.Surface.Canvas, e.Info);
+    }
+
+    private void OnPaintSurface(SKPaintSurfaceEventArgs e)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        Render(e.Surface.Canvas, e.Info);
+    }
+
+    private void Render(SKCanvas canvas, SKImageInfo info)
+    {
         Interlocked.Increment(ref _paintCount);
         _renderer.Render(
-            e.Surface.Canvas,
-            e.Info,
+            canvas,
+            info,
             (float)_dpr,
             Roots,
             selection: null,
@@ -155,8 +199,8 @@
             {
                 _renderer.FitToBounds(bounds);
                 _renderer.Render(
-                    e.Surface.Canvas,
-                    e.Info,
+                    canvas,
+                    info,
                     (float)_dpr,
                     Roots,
                     selection: null,
@@ -165,6 +209,13 @@
                     effectiveValues: EffectiveValues);
             }
         }
+    }
+
+    private enum CanvasMode
+    {
+        Pending,
+        WebGL,
+        Raster,
     }
 
     public async ValueTask DisposeAsync()
