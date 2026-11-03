@@ -269,7 +269,7 @@ public class DocumentFileServiceTests
     }
 
     [Fact]
-    public async Task LoadSampleAsync_LoadsThePlayerScene()
+    public async Task LoadSampleAsync_LoadsTheOrbitScene()
     {
         var result = await _service.LoadSampleAsync();
 
@@ -277,17 +277,54 @@ public class DocumentFileServiceTests
         Assert.Equal(DocumentFileService.SampleFileName, result.FileName);
         Assert.Empty(result.Document!.Warnings);
         Assert.Equal(13, result.Document.Roots.Count);
-        Assert.Equal(19, DocumentFileService.CountPrimitives(result.Document.Roots));
+        Assert.Equal(62, DocumentFileService.CountPrimitives(result.Document.Roots));
         Assert.True(result.Document.Simulation!.Loop);
-        Assert.Equal(5, result.Document.Simulation.Tracks.Count);
+        Assert.Equal(9, result.Document.Simulation.Tracks.Count);
         Assert.Equal(
-            14,
+            38,
             result.Document.Simulation.Tracks.Sum(track => track.Keyframes.Count));
         var selected = Assert.Single(result.Document.ResolveSelection());
-        Assert.Equal("Step Indicator", selected.Name.Value);
+        Assert.Equal("Comet Head", selected.Name.Value);
         Assert.Equal(
             2,
             result.Document.Simulation.Tracks.Count(track => track.PrimitiveId == selected.Id));
+
+        var interpolations = result.Document.Simulation.Tracks
+            .SelectMany(track => track.Keyframes)
+            .Select(keyframe => keyframe.Interpolation)
+            .ToHashSet();
+        Assert.Equal(6, interpolations.Count);
+        Assert.Contains(InterpolationKind.CubicBezier, interpolations);
+        Assert.Contains(InterpolationKind.Step, interpolations);
+
+        var containerKinds = EnumerateContainers(result.Document.Roots)
+            .Select(container => container.Kind)
+            .ToHashSet();
+        Assert.Contains(ContainerKind.Offset, containerKinds);
+        Assert.Contains(ContainerKind.Rotation, containerKinds);
+        Assert.Contains(ContainerKind.Flip, containerKinds);
+
+        var offsetGroup = Assert.IsType<Container>(selected.Parent);
+        Assert.Equal(ContainerKind.Offset, offsetGroup.Kind);
+        var rotationArm = Assert.IsType<Container>(offsetGroup.Parent);
+        Assert.Equal(ContainerKind.Rotation, rotationArm.Kind);
+    }
+
+    private static IEnumerable<Container> EnumerateContainers(IReadOnlyList<Primitive> primitives)
+    {
+        foreach (var primitive in primitives)
+        {
+            if (primitive is not Container container)
+            {
+                continue;
+            }
+
+            yield return container;
+            foreach (var child in EnumerateContainers(container.Children))
+            {
+                yield return child;
+            }
+        }
     }
 
     [Fact]
@@ -301,9 +338,9 @@ public class DocumentFileServiceTests
         _service.Apply(result.Document!);
 
         Assert.Equal(13, _primitives.GetAll().Count);
-        Assert.Equal("Step Indicator", Assert.Single(_primitives.GetSelection()).Name.Value);
+        Assert.Equal("Comet Head", Assert.Single(_primitives.GetSelection()).Name.Value);
         Assert.True(_config.Config.Loop);
-        Assert.Equal(5, _config.Config.Tracks.Count);
+        Assert.Equal(9, _config.Config.Tracks.Count);
         Assert.DoesNotContain(_primitives.GetAll(), primitive => primitive.Name.Value == "Old");
     }
 
@@ -395,7 +432,7 @@ public class DocumentFileServiceTests
             CancellationToken cancellationToken)
         {
             Assert.Equal(
-                new Uri("http://localhost/samples/loop-study-01.penelopa.json"),
+                new Uri("http://localhost/samples/orbit-study-01.penelopa.json"),
                 request.RequestUri);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {

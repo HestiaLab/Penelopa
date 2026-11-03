@@ -15,11 +15,11 @@ English | [简体中文](README.md)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/images/screenshot-dark.png">
-  <img src="docs/assets/images/screenshot-light.png" alt="Penelopa six-region workspace with the Loop Study 01 sample loaded: Tools, Primitives, Diagram canvas, Properties, and the status bar" width="1440">
+  <img src="docs/assets/images/screenshot-light.png" alt="Penelopa six-region workspace with the Orbit Study 01 sample loaded: Primitives tree, Diagram canvas, Properties, and the status bar" width="1440">
 </picture>
 
 Penelopa pairs a SkiaSharp drawing canvas, primitive tree, six-direction alignment, and a typed property editor inside a six-region dockable workspace. The editor opens up to three document tabs, each with independent history and simulation configuration. A dedicated `/simulation` page turns Float properties into keyframe tracks for design validation and debugging.
-The bundled Loop Study 01 sample (five tracks, 14 keyframes, 9 seconds) loads and plays in one click. The workspace is built on Atlas.Blazor 0.4.0 and uses Astrea.Components 0.9.0 for the primitive tree.
+The bundled Orbit Study 01 sample (62 primitives, nine tracks, 38 keyframes, 12 seconds, all six interpolation modes) loads and plays in one click. The workspace is built on Atlas.Blazor 0.4.0 and uses Astrea.Components 0.9.0 for the primitive tree.
 
 > **v3-only documents:** Load and Import accept only version 3 `.penelopa.json` documents. Version 1, version 2, and versionless files are rejected with a reason. Documents use stable type ids, `DocumentId`/`Revision`, and preserve unknown `Extensions`. The current behavior is specified in the [软件需求规格说明书](docs/软件需求规格说明书.md).
 >
@@ -31,17 +31,18 @@ The bundled Loop Study 01 sample (five tracks, 14 keyframes, 9 seconds) loads an
 
 ## Preview
 
-![Simulation workspace playing the Loop Study 01 sample](docs/assets/images/simulation.png)
+![Simulation workspace playing the Orbit Study 01 sample](docs/assets/images/simulation.png)
 
-The simulation workspace plays the bundled 9-second Loop Study 01 sample with five keyframe tracks.
+The simulation workspace plays the bundled 12-second Orbit Study 01 sample with nine keyframe tracks and all six interpolation modes.
 
 ## Try the sample
 
 1. Open the live demo.
-2. In the empty editor, choose **Load Loop Study 01**.
-3. Select **Simulate**, then **Play**.
+2. In the empty editor, choose **Load Orbit Study 01**.
+3. Select the amber comet to inspect its triangle vertices and two tracks, or Ctrl-click orbiting bodies to try multi-select and alignment.
+4. Select **Simulate**, then **Play** to watch all six interpolation modes in a 12-second loop.
 
-> **Load Loop Study 01** only appears on an empty canvas. If the browser already stores a document, clear the site data first; the sample ships at `src/Penelopa.Web/wwwroot/samples/loop-study-01.penelopa.json`.
+> **Load Orbit Study 01** only appears on an empty canvas. If the browser already stores a document, clear the site data first; the sample ships at `src/Penelopa.Web/wwwroot/samples/orbit-study-01.penelopa.json`.
 
 ## Quick start
 

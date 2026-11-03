@@ -8,17 +8,17 @@ import {
 
 const samplePath = path.resolve(
   __dirname,
-  '../../../src/Penelopa.Web/wwwroot/samples/loop-study-01.penelopa.json');
+  '../../../src/Penelopa.Web/wwwroot/samples/orbit-study-01.penelopa.json');
 
 async function loadSample(page: Page): Promise<void> {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Load Loop Study 01', exact: true }).click();
+  await page.getByRole('button', { name: 'Load Orbit Study 01', exact: true }).click();
   await expect(page.locator('.penelopa-canvas-notice')).toContainText(
-    'Sample loaded. Select Simulate → Play.');
+    'Sample loaded. Select the comet or press Play.');
 }
 
 async function delaySample(page: Page, delayMs: number): Promise<void> {
-  await page.route('**/samples/loop-study-01.penelopa.json', async route => {
+  await page.route('**/samples/orbit-study-01.penelopa.json', async route => {
     await new Promise(resolve => setTimeout(resolve, delayMs));
     await route.continue();
   });
@@ -56,12 +56,12 @@ test('empty canvas loads the bundled sample and opens its two-track simulation',
 
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await expect(page.locator('.penelopa-tree-item.selected')).toContainText(
-    'Step Indicator');
+    'Comet Head');
 
   await page.getByRole('link', { name: 'Simulate', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Simulation', exact: true })).toBeVisible();
   await expect(
-    page.getByRole('treeitem', { name: /Step Indicator/ }),
+    page.getByRole('treeitem', { name: /Comet Head/ }),
   ).toBeVisible();
   await expect(page.locator('.penelopa-simulation-track-label')).toHaveCount(2);
   await expect(page.locator('.penelopa-simulation-time')).toHaveText('0.000s');
@@ -90,11 +90,11 @@ test('import file confirms, replaces in memory, and does not write localStorage'
   await expect(
     page.getByRole('button', { name: 'Replace document', exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('19 primitive(s), 5 active track(s).')).toBeVisible();
+  await expect(page.getByText('62 primitive(s), 9 active track(s).')).toBeVisible();
 
   await page.getByRole('button', { name: 'Replace document', exact: true }).click();
   await expect(page.locator('.penelopa-import-undo')).toContainText(
-    'Imported loop-study-01.penelopa.json.');
+    'Imported orbit-study-01.penelopa.json.');
   await expect(page.locator('.penelopa-tool-message[role="status"]')).toBeFocused();
   await expect(
     page.getByRole('button', { name: 'Undo import', exact: true }),
@@ -103,7 +103,7 @@ test('import file confirms, replaces in memory, and does not write localStorage'
 
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await expect(page.locator('.penelopa-tree-item.selected')).toContainText(
-    'Step Indicator');
+    'Comet Head');
 
   await page.getByRole('link', { name: 'Simulate', exact: true }).click();
   await expect(page.locator('.penelopa-simulation-track-label')).toHaveCount(2);
@@ -132,7 +132,7 @@ test('export downloads a reusable v3 file without writing localStorage', async (
   expect(document.DocumentId).toMatch(/^[0-9a-f-]{36}$/i);
   expect(document.Primitives).toHaveLength(13);
   expect(document.Simulation.Loop).toBe(true);
-  expect(document.Simulation.Tracks).toHaveLength(5);
+  expect(document.Simulation.Tracks).toHaveLength(9);
   expect(await page.evaluate(() => localStorage.getItem('penelopa.document'))).toBeNull();
 
   await page.goto('/');
@@ -147,7 +147,7 @@ test('export downloads a reusable v3 file without writing localStorage', async (
   await page.getByRole('button', { name: 'Replace document', exact: true }).click();
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await expect(page.locator('.penelopa-tree-item.selected')).toContainText(
-    'Step Indicator');
+    'Comet Head');
   await expectSimulationClean(page, errors);
 });
 
@@ -223,7 +223,7 @@ test('dragging a document over the whole editor imports it and opens Tools', asy
 
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
   await expect(page.locator('.penelopa-tree-item.selected'))
-    .toContainText('Step Indicator');
+    .toContainText('Comet Head');
   await expectSimulationClean(page, errors);
 });
 
@@ -406,7 +406,7 @@ test('a delayed sample is canceled when the canvas changes', async ({ page }) =>
   await delaySample(page, 2000);
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Load Loop Study 01', exact: true }).click();
+  await page.getByRole('button', { name: 'Load Orbit Study 01', exact: true }).click();
   await page.getByRole('button', { name: 'Circle', exact: true }).click();
 
   await expect(page.locator('.penelopa-canvas-notice')).toContainText(
@@ -422,26 +422,26 @@ test('a delayed sample is canceled when an import replaces the canvas', async ({
   await delaySample(page, 2000);
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Load Loop Study 01', exact: true }).click();
+  await page.getByRole('button', { name: 'Load Orbit Study 01', exact: true }).click();
   await page.locator('input[type=file]').setInputFiles(samplePath);
   await page.getByRole('button', { name: 'Replace document', exact: true }).click();
   await expect(page.locator('.penelopa-import-undo')).toContainText(
-    'Imported loop-study-01.penelopa.json.');
+    'Imported orbit-study-01.penelopa.json.');
 
   await expect(page.locator('.penelopa-canvas-notice')).toContainText(
     'Sample load canceled because the canvas changed.');
   await page.getByRole('tab', { name: 'Primitives', exact: true }).click();
-  await expect(page.locator('.penelopa-tree-item')).toHaveCount(19);
+  await expect(page.locator('.penelopa-tree-item')).toHaveCount(62);
   await expect(page.locator('.penelopa-tree-item.selected'))
-    .toContainText('Step Indicator');
+    .toContainText('Comet Head');
   await expectSimulationClean(page, errors);
 });
 
 test('a failed sample load shows the error outside the empty-state card', async ({ page }) => {
-  await page.route('**/samples/loop-study-01.penelopa.json', route => route.abort());
+  await page.route('**/samples/orbit-study-01.penelopa.json', route => route.abort());
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Load Loop Study 01', exact: true }).click();
+  await page.getByRole('button', { name: 'Load Orbit Study 01', exact: true }).click();
   await expect(page.locator('.penelopa-canvas-notice.is-error')).toContainText(
     'The sample scene could not be loaded.');
   await page.getByRole('button', { name: 'Circle', exact: true }).click();
@@ -600,8 +600,8 @@ test('autosaved journal offers recovery after reload and does not restore histor
   await page.getByTestId('recovery-recover').click();
   await expect(page.getByTestId('recovery-banner')).toHaveCount(0);
   await expect(page.getByTestId('penelopa-status-bar')).toContainText(
-    '19 primitives');
-  await expect(page.getByTestId('penelopa-status-bar')).toContainText('5 tracks');
+    '62 primitives');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('9 tracks');
   await expect(page.getByTestId('penelopa-status-bar')).toContainText('1 selected');
   await expect(page.getByRole('button', { name: 'Undo document change' }))
     .toBeDisabled();
@@ -814,7 +814,7 @@ test('an imported document can be recovered after reload even when the saved id 
   await expect(page.getByTestId('recovery-banner')).toContainText(
     'different document');
   await page.getByTestId('recovery-recover').click();
-  await expect(page.getByTestId('penelopa-status-bar')).toContainText('19 primitives');
+  await expect(page.getByTestId('penelopa-status-bar')).toContainText('62 primitives');
 });
 
 

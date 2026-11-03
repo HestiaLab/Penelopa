@@ -1,0 +1,1007 @@
+{
+  "Version": 3,
+  "DocumentId": "00000000-0000-0000-0000-000000000003",
+  "Revision": 0,
+  "Primitives": [
+    {
+      "Id": "00000000-0000-0000-0000-000000000017",
+      "Type": "penelopa.container.offset",
+      "Props": {
+        "Name": "Frame Assembly",
+        "Offset X": 0,
+        "Offset Y": 0
+      },
+      "Children": [
+        {
+          "Id": "00000000-0000-0000-0000-000000000003",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Foot",
+            "PosX": -210,
+            "PosY": -440,
+            "Width": 420,
+            "Height": 18,
+            "Color": 4279712597
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000004",
+          "Type": "penelopa.triangle",
+          "Props": {
+            "Name": "Stand",
+            "Vertex1X": -150,
+            "Vertex1Y": -340,
+            "Vertex2X": 150,
+            "Vertex2Y": -340,
+            "Vertex3X": 0,
+            "Vertex3Y": -430,
+            "Color": 4278983980
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000005",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Instrument Plate",
+            "PosX": -500,
+            "PosY": -340,
+            "Width": 1000,
+            "Height": 680,
+            "Color": 4279114538
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000006",
+          "Type": "penelopa.triangle",
+          "Props": {
+            "Name": "Chevron Right",
+            "Vertex1X": 440,
+            "Vertex1Y": 18,
+            "Vertex2X": 440,
+            "Vertex2Y": -18,
+            "Vertex3X": 412,
+            "Vertex3Y": 0,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000008",
+          "Type": "penelopa.container.flip",
+          "Props": {
+            "Name": "Mirror Chevrons",
+            "Scale X": -1,
+            "Scale Y": 1
+          },
+          "Children": [
+            {
+              "Id": "00000000-0000-0000-0000-000000000007",
+              "Type": "penelopa.triangle",
+              "Props": {
+                "Name": "Chevron Left",
+                "Vertex1X": 440,
+                "Vertex1Y": 18,
+                "Vertex2X": 440,
+                "Vertex2Y": -18,
+                "Vertex3X": 412,
+                "Vertex3Y": 0,
+                "Color": 4281162360
+              }
+            }
+          ]
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000009",
+          "Type": "penelopa.triangle",
+          "Props": {
+            "Name": "Corner NW",
+            "Vertex1X": -460,
+            "Vertex1Y": 300,
+            "Vertex2X": -460,
+            "Vertex2Y": 260,
+            "Vertex3X": -420,
+            "Vertex3Y": 300,
+            "Color": 3358415480
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000010",
+          "Type": "penelopa.triangle",
+          "Props": {
+            "Name": "Corner NE",
+            "Vertex1X": 460,
+            "Vertex1Y": 300,
+            "Vertex2X": 460,
+            "Vertex2Y": 260,
+            "Vertex3X": 420,
+            "Vertex3Y": 300,
+            "Color": 3358415480
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000011",
+          "Type": "penelopa.triangle",
+          "Props": {
+            "Name": "Corner SW",
+            "Vertex1X": -460,
+            "Vertex1Y": -300,
+            "Vertex2X": -460,
+            "Vertex2Y": -260,
+            "Vertex3X": -420,
+            "Vertex3Y": -300,
+            "Color": 3358415480
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000012",
+          "Type": "penelopa.triangle",
+          "Props": {
+            "Name": "Corner SE",
+            "Vertex1X": 460,
+            "Vertex1Y": -300,
+            "Vertex2X": 460,
+            "Vertex2Y": -260,
+            "Vertex3X": 420,
+            "Vertex3Y": -300,
+            "Color": 3358415480
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000013",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Star 1",
+            "CenterX": -380,
+            "CenterY": 240,
+            "Radius": 3,
+            "Color": 2860496857
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000014",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Star 2",
+            "CenterX": 390,
+            "CenterY": 250,
+            "Radius": 2.5,
+            "Color": 1853863897
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000015",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Star 3",
+            "CenterX": -400,
+            "CenterY": -220,
+            "Radius": 2.5,
+            "Color": 1853863897
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000016",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Star 4",
+            "CenterX": 410,
+            "CenterY": -210,
+            "Radius": 3,
+            "Color": 2860496857
+          }
+        }
+      ]
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000042",
+      "Type": "penelopa.container.offset",
+      "Props": {
+        "Name": "Dial Assembly",
+        "Offset X": 0,
+        "Offset Y": 0
+      },
+      "Children": [
+        {
+          "Id": "00000000-0000-0000-0000-000000000018",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Dial Bezel",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 320,
+            "Color": 4280173922
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000019",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Dial Groove",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 306,
+            "Color": 4278653213
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000020",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Dial Face",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 298,
+            "Color": 4278983210
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000021",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Bezel Stud 1",
+            "CenterX": 256.8,
+            "CenterY": 106.4,
+            "Radius": 5,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000022",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Bezel Stud 2",
+            "CenterX": 106.4,
+            "CenterY": 256.8,
+            "Radius": 5,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000023",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Bezel Stud 3",
+            "CenterX": -106.4,
+            "CenterY": 256.8,
+            "Radius": 5,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000024",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Bezel Stud 4",
+            "CenterX": -256.8,
+            "CenterY": 106.4,
+            "Radius": 5,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000025",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Bezel Stud 5",
+            "CenterX": -256.8,
+            "CenterY": -106.4,
+            "Radius": 5,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000026",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Bezel Stud 6",
+            "CenterX": -106.4,
+            "CenterY": -256.8,
+            "Radius": 5,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000027",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Bezel Stud 7",
+            "CenterX": 106.4,
+            "CenterY": -256.8,
+            "Radius": 5,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000028",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Bezel Stud 8",
+            "CenterX": 256.8,
+            "CenterY": -106.4,
+            "Radius": 5,
+            "Color": 4281162360
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000029",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Meridian Stud",
+            "CenterX": 0,
+            "CenterY": 278,
+            "Radius": 7,
+            "Color": 4294288676
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000030",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Tick N",
+            "PosX": -3,
+            "PosY": 238,
+            "Width": 6,
+            "Height": 22,
+            "Color": 4282088094
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000031",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Tick S",
+            "PosX": -3,
+            "PosY": -260,
+            "Width": 6,
+            "Height": 22,
+            "Color": 4282088094
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000032",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Tick W",
+            "PosX": -260,
+            "PosY": -3,
+            "Width": 22,
+            "Height": 6,
+            "Color": 4282088094
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000033",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Tick E",
+            "PosX": 238,
+            "PosY": -3,
+            "Width": 22,
+            "Height": 6,
+            "Color": 4282088094
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000034",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Aura Outer",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 252,
+            "Color": 304855000
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000035",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Aura Inner",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 188,
+            "Color": 439072728
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000036",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Outer Orbit Band",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 228,
+            "Color": 4279975000
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000037",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Outer Orbit Cut",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 222,
+            "Color": 4278983210
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000038",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Inner Orbit Band",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 154,
+            "Color": 4279975000
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000039",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Inner Orbit Cut",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 148,
+            "Color": 4278983210
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000040",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Reticle H",
+            "PosX": -240,
+            "PosY": -1,
+            "Width": 480,
+            "Height": 2,
+            "Color": 757839832
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000041",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Reticle V",
+            "PosX": -1,
+            "PosY": -240,
+            "Width": 2,
+            "Height": 480,
+            "Color": 757839832
+          }
+        }
+      ]
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000043",
+      "Type": "penelopa.circle",
+      "Props": {
+        "Name": "Core Halo",
+        "CenterX": 0,
+        "CenterY": 0,
+        "Radius": 110,
+        "Color": 506181592
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000044",
+      "Type": "penelopa.circle",
+      "Props": {
+        "Name": "Core Outer",
+        "CenterX": 0,
+        "CenterY": 0,
+        "Radius": 86,
+        "Color": 4279384143
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000045",
+      "Type": "penelopa.circle",
+      "Props": {
+        "Name": "Core Ring",
+        "CenterX": 0,
+        "CenterY": 0,
+        "Radius": 72,
+        "Color": 4281055192
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000046",
+      "Type": "penelopa.circle",
+      "Props": {
+        "Name": "Core Inner",
+        "CenterX": 0,
+        "CenterY": 0,
+        "Radius": 54,
+        "Color": 4278851108
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000047",
+      "Type": "penelopa.circle",
+      "Props": {
+        "Name": "Sun",
+        "CenterX": 0,
+        "CenterY": 0,
+        "Radius": 38,
+        "Color": 4294288676
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000048",
+      "Type": "penelopa.circle",
+      "Props": {
+        "Name": "Sun Highlight",
+        "CenterX": -12,
+        "CenterY": 14,
+        "Radius": 12,
+        "Color": 3036668592
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000054",
+      "Type": "penelopa.container.rotation",
+      "Props": {
+        "Name": "Orbit Arm Outer",
+        "Rotation": 0
+      },
+      "Children": [
+        {
+          "Id": "00000000-0000-0000-0000-000000000049",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Outer Planet Halo",
+            "CenterX": -139,
+            "CenterY": 139,
+            "Radius": 30,
+            "Color": 676316151
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000050",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Outer Planet",
+            "CenterX": -139,
+            "CenterY": 139,
+            "Radius": 19,
+            "Color": 4283417591
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000053",
+          "Type": "penelopa.container.offset",
+          "Props": {
+            "Name": "Comet Group",
+            "Offset X": 139,
+            "Offset Y": 139
+          },
+          "Children": [
+            {
+              "Id": "00000000-0000-0000-0000-000000000051",
+              "Type": "penelopa.circle",
+              "Props": {
+                "Name": "Comet Glow",
+                "CenterX": 0,
+                "CenterY": 0,
+                "Radius": 30,
+                "Color": 1022731556
+              }
+            },
+            {
+              "Id": "00000000-0000-0000-0000-000000000052",
+              "Type": "penelopa.triangle",
+              "Props": {
+                "Name": "Comet Head",
+                "Vertex1X": -14,
+                "Vertex1Y": -16,
+                "Vertex2X": 14,
+                "Vertex2Y": -16,
+                "Vertex3X": 0,
+                "Vertex3Y": 30,
+                "Color": 4294288676
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000058",
+      "Type": "penelopa.container.rotation",
+      "Props": {
+        "Name": "Orbit Arm Inner",
+        "Rotation": 0
+      },
+      "Children": [
+        {
+          "Id": "00000000-0000-0000-0000-000000000055",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Inner Planet Halo",
+            "CenterX": 61,
+            "CenterY": -106,
+            "Radius": 23,
+            "Color": 687108790
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000056",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Inner Planet",
+            "CenterX": 61,
+            "CenterY": -106,
+            "Radius": 13,
+            "Color": 4294210230
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000057",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Counterweight",
+            "PosX": -73,
+            "PosY": 100,
+            "Width": 24,
+            "Height": 12,
+            "Color": 4281162360
+          }
+        }
+      ]
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000062",
+      "Type": "penelopa.container.rotation",
+      "Props": {
+        "Name": "Second Hand",
+        "Rotation": 0
+      },
+      "Children": [
+        {
+          "Id": "00000000-0000-0000-0000-000000000059",
+          "Type": "penelopa.rect",
+          "Props": {
+            "Name": "Second Hand",
+            "PosX": -2,
+            "PosY": 0,
+            "Width": 4,
+            "Height": 150,
+            "Color": 4294288676
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000060",
+          "Type": "penelopa.triangle",
+          "Props": {
+            "Name": "Hand Tip",
+            "Vertex1X": -9,
+            "Vertex1Y": 150,
+            "Vertex2X": 9,
+            "Vertex2Y": 150,
+            "Vertex3X": 0,
+            "Vertex3Y": 172,
+            "Color": 4294957472
+          }
+        },
+        {
+          "Id": "00000000-0000-0000-0000-000000000061",
+          "Type": "penelopa.circle",
+          "Props": {
+            "Name": "Hand Hub",
+            "CenterX": 0,
+            "CenterY": 0,
+            "Radius": 10,
+            "Color": 4294957472
+          }
+        }
+      ]
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000063",
+      "Type": "penelopa.rect",
+      "Props": {
+        "Name": "Gauge Track",
+        "PosX": -130,
+        "PosY": -280,
+        "Width": 260,
+        "Height": 8,
+        "Color": 4279710282
+      }
+    },
+    {
+      "Id": "00000000-0000-0000-0000-000000000064",
+      "Type": "penelopa.rect",
+      "Props": {
+        "Name": "Gauge Fill",
+        "PosX": -130,
+        "PosY": -280,
+        "Width": 22,
+        "Height": 8,
+        "Color": 4281055192
+      }
+    }
+  ],
+  "SelectionIds": [
+    "00000000-0000-0000-0000-000000000052"
+  ],
+  "Simulation": {
+    "Loop": true,
+    "Tracks": [
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000054",
+        "Property": "Rotation",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 0,
+            "Interpolation": "linear"
+          },
+          {
+            "Time": 12,
+            "Value": 360,
+            "Interpolation": "linear"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000058",
+        "Property": "Rotation",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 0,
+            "Interpolation": "linear"
+          },
+          {
+            "Time": 12,
+            "Value": 720,
+            "Interpolation": "linear"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000052",
+        "Property": "Vertex3X",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 0,
+            "Interpolation": "cubic-bezier",
+            "Bezier": [
+              0.22,
+              0.61,
+              0.36,
+              1
+            ]
+          },
+          {
+            "Time": 3,
+            "Value": 16,
+            "Interpolation": "cubic-bezier",
+            "Bezier": [
+              0.22,
+              0.61,
+              0.36,
+              1
+            ]
+          },
+          {
+            "Time": 6,
+            "Value": -12,
+            "Interpolation": "cubic-bezier",
+            "Bezier": [
+              0.22,
+              0.61,
+              0.36,
+              1
+            ]
+          },
+          {
+            "Time": 9,
+            "Value": 9,
+            "Interpolation": "cubic-bezier",
+            "Bezier": [
+              0.22,
+              0.61,
+              0.36,
+              1
+            ]
+          },
+          {
+            "Time": 12,
+            "Value": 0,
+            "Interpolation": "cubic-bezier",
+            "Bezier": [
+              0.22,
+              0.61,
+              0.36,
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000052",
+        "Property": "Vertex3Y",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 30,
+            "Interpolation": "ease-out"
+          },
+          {
+            "Time": 4,
+            "Value": 50,
+            "Interpolation": "ease-out"
+          },
+          {
+            "Time": 8,
+            "Value": 22,
+            "Interpolation": "ease-out"
+          },
+          {
+            "Time": 12,
+            "Value": 30,
+            "Interpolation": "ease-out"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000043",
+        "Property": "Radius",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 110,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 6,
+            "Value": 132,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 12,
+            "Value": 110,
+            "Interpolation": "ease-in-out"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000053",
+        "Property": "Offset Y",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 139,
+            "Interpolation": "ease-in"
+          },
+          {
+            "Time": 6,
+            "Value": 179,
+            "Interpolation": "ease-in"
+          },
+          {
+            "Time": 12,
+            "Value": 139,
+            "Interpolation": "ease-in"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000062",
+        "Property": "Rotation",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 0,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 1,
+            "Value": 30,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 2,
+            "Value": 60,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 3,
+            "Value": 90,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 4,
+            "Value": 120,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 5,
+            "Value": 150,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 6,
+            "Value": 180,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 7,
+            "Value": 210,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 8,
+            "Value": 240,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 9,
+            "Value": 270,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 10,
+            "Value": 300,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 11,
+            "Value": 330,
+            "Interpolation": "step"
+          },
+          {
+            "Time": 12,
+            "Value": 360,
+            "Interpolation": "step"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000064",
+        "Property": "Width",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 22,
+            "Interpolation": "ease-out"
+          },
+          {
+            "Time": 6,
+            "Value": 240,
+            "Interpolation": "ease-out"
+          },
+          {
+            "Time": 12,
+            "Value": 22,
+            "Interpolation": "ease-out"
+          }
+        ]
+      },
+      {
+        "PrimitiveId": "00000000-0000-0000-0000-000000000056",
+        "Property": "Radius",
+        "Keyframes": [
+          {
+            "Time": 0,
+            "Value": 13,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 6,
+            "Value": 20,
+            "Interpolation": "ease-in-out"
+          },
+          {
+            "Time": 12,
+            "Value": 13,
+            "Interpolation": "ease-in-out"
+          }
+        ]
+      }
+    ]
+  }
+}
